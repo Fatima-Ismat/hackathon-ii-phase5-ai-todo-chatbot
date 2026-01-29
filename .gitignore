@@ -33,3 +33,8 @@ secrets*
 .DS_Store
 Thumbs.db
 .vscode/
+# Local logs / db (Phase-5 cleanup)
+fe.log
+fe2.log
+frontend-build.log
+dev.db
