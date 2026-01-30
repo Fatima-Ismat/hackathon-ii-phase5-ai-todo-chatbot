@@ -18,10 +18,20 @@ async function readJsonSafe(res: Response) {
   }
 }
 
-async function request<T>(
-  url: string,
-  opts?: RequestInit
-): Promise<T> {
+/**
+ * Make userId URL-safe and stable.
+ * - trims spaces
+ * - collapses internal spaces
+ * - falls back to "demo"
+ * - encodeURIComponent for safe URL segment
+ */
+function safeUserId(userId: string) {
+  const cleaned = (userId || "").trim().replace(/\s+/g, " ");
+  const finalId = cleaned.length ? cleaned : "demo";
+  return encodeURIComponent(finalId);
+}
+
+async function request<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...opts,
     headers: {
@@ -42,7 +52,9 @@ async function request<T>(
         : typeof (data as any)?.message === "string"
         ? (data as any).message
         : `Request failed (${res.status})`;
-    throw new Error(msg);
+
+    // include URL in error for easier debugging
+    throw new Error(`${msg} | ${url}`);
   }
 
   return data as T;
@@ -51,34 +63,37 @@ async function request<T>(
 /**
  * IMPORTANT:
  * We use Next.js API routes as a proxy to backend to avoid CORS.
- * So frontend will call:
+ * Frontend calls:
  *  /api/:userId/tasks
  *  /api/:userId/tasks/:taskId
  *  /api/:userId/chat
- *
- * These routes will forward to backend internally.
  */
 
 export async function apiListTasks(userId: string): Promise<Task[]> {
-  const data = await request<{ tasks?: Task[] }>(`/api/${encodeURIComponent(userId)}/tasks`, {
+  const uid = safeUserId(userId);
+  const data = await request<{ tasks?: Task[] }>(`/api/${uid}/tasks`, {
     method: "GET",
   });
   return Array.isArray(data.tasks) ? data.tasks : [];
 }
 
 export async function apiAddTask(userId: string, title: string): Promise<Task> {
-  const data = await request<{ task: Task }>(`/api/${encodeURIComponent(userId)}/tasks`, {
+  const uid = safeUserId(userId);
+  const data = await request<{ task: Task }>(`/api/${uid}/tasks`, {
     method: "POST",
     body: JSON.stringify({ title }),
   });
   return data.task;
 }
 
-export async function apiDeleteTask(userId: string, taskId: number): Promise<{ ok: true }> {
-  return await request<{ ok: true }>(
-    `/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(String(taskId))}`,
-    { method: "DELETE" }
-  );
+export async function apiDeleteTask(
+  userId: string,
+  taskId: number
+): Promise<{ ok: true }> {
+  const uid = safeUserId(userId);
+  return await request<{ ok: true }>(`/api/${uid}/tasks/${encodeURIComponent(String(taskId))}`, {
+    method: "DELETE",
+  });
 }
 
 export async function apiToggleComplete(
@@ -86,8 +101,9 @@ export async function apiToggleComplete(
   taskId: number,
   completed: boolean
 ): Promise<Task> {
+  const uid = safeUserId(userId);
   const data = await request<{ task: Task }>(
-    `/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(String(taskId))}`,
+    `/api/${uid}/tasks/${encodeURIComponent(String(taskId))}`,
     {
       method: "PATCH",
       body: JSON.stringify({ completed }),
@@ -96,7 +112,7 @@ export async function apiToggleComplete(
   return data.task;
 }
 
-/** Backward-compatible aliases (agar kahin purana naam use ho raha ho) */
+/** Backward-compatible aliases */
 export const listTasks = apiListTasks;
 export const addTask = apiAddTask;
 export const deleteTask = apiDeleteTask;
