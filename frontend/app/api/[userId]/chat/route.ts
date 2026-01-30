@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
 export async function POST(
-  req: Request,
-  context: { params: Promise<{ userId: string }> }
+  request: NextRequest,
+  context: { params: { userId: string } }
 ) {
-  const { userId } = await context.params;
-  const body = await req.json();
+  const { userId } = context.params;
+  const body = await request.json();
 
   const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/chat`, {
     method: "POST",
