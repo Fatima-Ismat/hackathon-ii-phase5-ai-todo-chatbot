@@ -1,0 +1,30 @@
+replicaCount: 1
+
+image:
+  repository: todo-backend
+  pullPolicy: IfNotPresent
+  tag: local
+
+service:
+  type: ClusterIP
+  port: 8000
+
+env:
+  OPENAI_API_KEY: ""
+  DATABASE_URL: ""
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+ingress:
+  enabled: false
+
+httpRoute:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+resources: {}

@@ -1,0 +1,9 @@
+{
+  "name": "hackathon-ii-phase3-chatbot",
+  "private": true,
+  "devDependencies": {
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18"
+  }
+}

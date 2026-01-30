@@ -1,0 +1,28 @@
+replicaCount: 1
+
+image:
+  repository: todo-frontend
+  pullPolicy: IfNotPresent
+  tag: local
+
+service:
+  type: NodePort
+  port: 3000
+  nodePort: 30001
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+ingress:
+  enabled: false
+
+httpRoute:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+resources: {}
