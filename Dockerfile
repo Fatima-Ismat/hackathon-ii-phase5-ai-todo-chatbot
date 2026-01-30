@@ -1,3 +1,5 @@
+# Dockerfile (HF-safe)
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -10,10 +12,10 @@ RUN pip install --no-cache-dir --upgrade pip \
 # code
 COPY backend /app/backend
 
-# make `app` importable (backend/app is your package)
+# ensure "app" package is importable (backend/app)
 ENV PYTHONPATH=/app/backend
 
 EXPOSE 7860
 
-# IMPORTANT: run uvicorn via python module (no PATH issues)
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+# run uvicorn with explicit app-dir (prevents import issues on HF)
+CMD ["python", "-m", "uvicorn", "app.main:app", "--app-dir", "/app/backend", "--host", "0.0.0.0", "--port", "7860"]
