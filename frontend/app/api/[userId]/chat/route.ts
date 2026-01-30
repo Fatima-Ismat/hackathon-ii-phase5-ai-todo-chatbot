@@ -1,55 +1,41 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
-
-function normalizeBase(url: string) {
-  return url.replace(/\/+$/, "");
-}
-
-function backendBase(): string {
-  const b = (process.env.NEXT_PUBLIC_API_BASE || process.env.API_BASE || "").trim();
-  if (!b) throw new Error("API base missing. Set NEXT_PUBLIC_API_BASE or API_BASE in frontend container env.");
-  return normalizeBase(b);
-}
-
-async function safeJson(res: Response) {
-  const txt = await res.text().catch(() => "");
-  if (!txt) return {};
-  try {
-    return JSON.parse(txt);
-  } catch {
-    return {};
-  }
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204 });
-}
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || process.env.API_BASE || "";
 
 export async function POST(
-  req: NextRequest,
-  ctx: { params: Promise<{ userId: string }> }
+  req: Request,
+  { params }: { params: { userId: string } }
 ) {
   try {
-    const { userId } = await ctx.params;
-    const base = backendBase();
-    const body = await req.json().catch(() => ({}));
+    if (!API_BASE) {
+      return NextResponse.json(
+        { error: "Missing API base. Set NEXT_PUBLIC_API_BASE in Vercel." },
+        { status: 500 }
+      );
+    }
 
-    const upstream = await fetch(`${base}/api/${encodeURIComponent(userId)}/chat`, {
+    const userId = params.userId;
+    const body = await req.json();
+
+    const target = new URL(
+      `/api/${encodeURIComponent(userId)}/chat`,
+      API_BASE
+    ).toString();
+
+    const r = await fetch(target, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      cache: "no-store",
     });
 
-    const data = await safeJson(upstream);
-
-    return NextResponse.json(data, {
-      status: upstream.status,
-    });
+    const data = await r.json().catch(() => ({}));
+    return NextResponse.json(data, { status: r.status });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Proxy error" },
-      { status: 500 }
+      { error: "Proxy error", details: String(e?.message || e) },
+      { status: 502 }
     );
   }
 }

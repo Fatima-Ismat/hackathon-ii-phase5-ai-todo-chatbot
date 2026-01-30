@@ -1,84 +1,71 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
-
-function normalizeBase(url: string) {
-  return url.replace(/\/+$/, "");
-}
-
-function backendBase(): string {
-  const b = (process.env.NEXT_PUBLIC_API_BASE || process.env.API_BASE || "").trim();
-  if (!b) throw new Error("API base missing. Set NEXT_PUBLIC_API_BASE or API_BASE in frontend container env.");
-  return normalizeBase(b);
-}
-
-async function safeJson(res: Response) {
-  const txt = await res.text().catch(() => "");
-  if (!txt) return {};
-  try {
-    return JSON.parse(txt);
-  } catch {
-    return {};
-  }
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204 });
-}
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || process.env.API_BASE || "";
 
 export async function PATCH(
-  req: NextRequest,
-  ctx: { params: Promise<{ userId: string; taskId: string }> }
+  req: Request,
+  { params }: { params: { userId: string; taskId: string } }
 ) {
   try {
-    const { userId, taskId } = await ctx.params;
-    const base = backendBase();
-    const body = await req.json().catch(() => ({}));
+    if (!API_BASE) {
+      return NextResponse.json(
+        { error: "Missing API base. Set NEXT_PUBLIC_API_BASE in Vercel." },
+        { status: 500 }
+      );
+    }
 
-    const upstream = await fetch(
-      `${base}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
+    const { userId, taskId } = params;
+    const body = await req.json();
 
-    const data = await safeJson(upstream);
+    const target = new URL(
+      `/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`,
+      API_BASE
+    ).toString();
 
-    return NextResponse.json(data, {
-      status: upstream.status,
+    const r = await fetch(target, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
     });
+
+    const data = await r.json().catch(() => ({}));
+    return NextResponse.json(data, { status: r.status });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Proxy error" },
-      { status: 500 }
+      { error: "Proxy error", details: String(e?.message || e) },
+      { status: 502 }
     );
   }
 }
 
 export async function DELETE(
-  _req: NextRequest,
-  ctx: { params: Promise<{ userId: string; taskId: string }> }
+  _req: Request,
+  { params }: { params: { userId: string; taskId: string } }
 ) {
   try {
-    const { userId, taskId } = await ctx.params;
-    const base = backendBase();
+    if (!API_BASE) {
+      return NextResponse.json(
+        { error: "Missing API base. Set NEXT_PUBLIC_API_BASE in Vercel." },
+        { status: 500 }
+      );
+    }
 
-    const upstream = await fetch(
-      `${base}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`,
-      { method: "DELETE" }
-    );
+    const { userId, taskId } = params;
 
-    const data = await safeJson(upstream);
+    const target = new URL(
+      `/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`,
+      API_BASE
+    ).toString();
 
-    return NextResponse.json(data, {
-      status: upstream.status,
-    });
+    const r = await fetch(target, { method: "DELETE", cache: "no-store" });
+    const data = await r.json().catch(() => ({}));
+    return NextResponse.json(data, { status: r.status });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Proxy error" },
-      { status: 500 }
+      { error: "Proxy error", details: String(e?.message || e) },
+      { status: 502 }
     );
   }
 }
