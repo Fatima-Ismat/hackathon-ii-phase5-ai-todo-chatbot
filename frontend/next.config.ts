@@ -1,18 +1,10 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: "standalone",
+﻿import type { NextConfig } from "next";
 
-  async rewrites() {
-    // Browser will call SAME ORIGIN /api/...
-    // Next server will forward to cluster service DNS (no CORS)
-    const target = process.env.API_INTERNAL_BASE || "http://todo-backend:8000";
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${target}/api/:path*`,
-      },
-    ];
-  },
+const nextConfig: NextConfig = {
+  // Vercel + local both OK. (If you use `output: "standalone"`, start with: node .next/standalone/server.js)
+  // output: "standalone",
+
+  // Keep it simple: NO rewrites/proxy here, warna "todo-backend" wali ENOTFOUND aati hai.
 };
 
-module.exports = nextConfig;
+export default nextConfig;

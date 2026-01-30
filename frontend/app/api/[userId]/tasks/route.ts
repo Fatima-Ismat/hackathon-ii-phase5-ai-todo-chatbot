@@ -3,22 +3,30 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
 export async function GET(
-  request: NextRequest,
-  context: { params: { userId: string } }
+  _request: NextRequest,
+  context: { params: Promise<{ userId: string }> }
 ) {
-  const { userId } = context.params;
+  const { userId } = await context.params;
 
-  const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/tasks`);
-  const data = await res.json();
+  const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/tasks`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  const text = await res.text();
+  let data: any = text;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {}
 
   return NextResponse.json(data, { status: res.status });
 }
 
 export async function POST(
   request: NextRequest,
-  context: { params: { userId: string } }
+  context: { params: Promise<{ userId: string }> }
 ) {
-  const { userId } = context.params;
+  const { userId } = await context.params;
   const body = await request.json();
 
   const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/tasks`, {
@@ -27,6 +35,11 @@ export async function POST(
     body: JSON.stringify(body),
   });
 
-  const data = await res.json();
+  const text = await res.text();
+  let data: any = text;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {}
+
   return NextResponse.json(data, { status: res.status });
 }

@@ -1,35 +1,29 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+﻿@'
+import { NextRequest, NextResponse } from "next/server";
 
-function getApiBase() {
-  const raw = process.env.NEXT_PUBLIC_API_BASE || "";
-  const base = raw.trim().replace(/\/+$/, ""); // remove trailing slash
-  return base;
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ userId: string }> }
 ) {
-  const API_BASE = getApiBase();
-  if (!API_BASE || !API_BASE.startsWith("http")) {
-    return NextResponse.json(
-      { error: "NEXT_PUBLIC_API_BASE missing/invalid on Vercel env vars", value: API_BASE || null },
-      { status: 500 }
-    );
+  if (!API_BASE) {
+    return NextResponse.json({ error: "NEXT_PUBLIC_API_BASE missing" }, { status: 500 });
   }
 
   const { userId } = await context.params;
   const body = await request.json();
 
-  const url = `${API_BASE}/api/${encodeURIComponent(userId)}/chat`;
-
-  const res = await fetch(url, {
+  const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    cache: "no-store",
   });
 
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data: any = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+
   return NextResponse.json(data, { status: res.status });
 }
+'@ | Out-File -LiteralPath "app/api/[userId]/chat/route.ts" -Encoding utf8
