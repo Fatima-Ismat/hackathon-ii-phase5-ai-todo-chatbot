@@ -7,7 +7,9 @@ const BACKEND =
   "http://127.0.0.1:8000";
 
 function joinUrl(base: string, path: string) {
-  return ${base.replace(/\/+$/, "")}/;
+  const b = base.replace(/\/+$/, "");
+  const p = path.replace(/^\/+/, "");
+  return b + "/" + p;
 }
 
 export async function POST(
@@ -16,7 +18,7 @@ export async function POST(
 ) {
   try {
     const userId = encodeURIComponent(params.userId);
-    const url = joinUrl(BACKEND, /api//chat);
+    const url = joinUrl(BACKEND, "/api/" + userId + "/chat");
     const body = await req.text();
 
     const r = await fetch(url, {
@@ -25,7 +27,7 @@ export async function POST(
       body,
     });
 
-    const t = await r.text(); // JSON.parse nahi karna
+    const t = await r.text();
     return new NextResponse(t, {
       status: r.status,
       headers: { "Content-Type": "application/json" },

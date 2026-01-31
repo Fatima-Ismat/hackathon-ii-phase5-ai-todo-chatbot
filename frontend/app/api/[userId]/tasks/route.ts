@@ -7,7 +7,9 @@ const BACKEND =
   "http://127.0.0.1:8000";
 
 function joinUrl(base: string, path: string) {
-  return ${base.replace(/\/+$/, "")}/;
+  const b = base.replace(/\/+$/, "");
+  const p = path.replace(/^\/+/, "");
+  return b + "/" + p;
 }
 
 export async function GET(
@@ -16,7 +18,7 @@ export async function GET(
 ) {
   try {
     const userId = encodeURIComponent(params.userId);
-    const url = joinUrl(BACKEND, /api//tasks/);
+    const url = joinUrl(BACKEND, "/api/" + userId + "/tasks/");
     const r = await fetch(url, { cache: "no-store" });
     const t = await r.text();
     return new NextResponse(t, {
@@ -34,7 +36,7 @@ export async function POST(
 ) {
   try {
     const userId = encodeURIComponent(params.userId);
-    const url = joinUrl(BACKEND, /api//tasks/);
+    const url = joinUrl(BACKEND, "/api/" + userId + "/tasks/");
     const body = await req.text();
 
     const r = await fetch(url, {
