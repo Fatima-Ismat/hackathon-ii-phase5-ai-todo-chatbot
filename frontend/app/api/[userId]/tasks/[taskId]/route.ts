@@ -11,34 +11,48 @@ function join(base: string, path: string) {
 
 export async function PATCH(
   _req: Request,
-  { params }: { params: { userId: string; taskId: string } }
+  context: { params: Promise<{ userId: string; taskId: string }> }
 ) {
-  const url = join(
-    BACKEND,
-    `api/${encodeURIComponent(params.userId)}/tasks/${encodeURIComponent(
-      params.taskId
-    )}/complete`
-  );
-  const r = await fetch(url, { method: "PATCH" });
-  return new NextResponse(await r.text(), {
-    status: r.status,
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const { userId, taskId } = await context.params;
+    const safeUserId = encodeURIComponent(userId);
+    const safeTaskId = encodeURIComponent(taskId);
+
+    const url = join(BACKEND, `api/${safeUserId}/tasks/${safeTaskId}/complete`);
+    const r = await fetch(url, { method: "PATCH" });
+
+    return new NextResponse(await r.text(), {
+      status: r.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { userId: string; taskId: string } }
+  context: { params: Promise<{ userId: string; taskId: string }> }
 ) {
-  const url = join(
-    BACKEND,
-    `api/${encodeURIComponent(params.userId)}/tasks/${encodeURIComponent(
-      params.taskId
-    )}`
-  );
-  const r = await fetch(url, { method: "DELETE" });
-  return new NextResponse(await r.text(), {
-    status: r.status,
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const { userId, taskId } = await context.params;
+    const safeUserId = encodeURIComponent(userId);
+    const safeTaskId = encodeURIComponent(taskId);
+
+    const url = join(BACKEND, `api/${safeUserId}/tasks/${safeTaskId}`);
+    const r = await fetch(url, { method: "DELETE" });
+
+    return new NextResponse(await r.text(), {
+      status: r.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
+  }
 }

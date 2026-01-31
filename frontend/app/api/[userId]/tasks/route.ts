@@ -11,28 +11,51 @@ function join(base: string, path: string) {
 
 export async function GET(
   _req: Request,
-  { params }: { params: { userId: string } }
+  context: { params: Promise<{ userId: string }> }
 ) {
-  const url = join(BACKEND, `api/${encodeURIComponent(params.userId)}/tasks/`);
-  const r = await fetch(url, { cache: "no-store" });
-  return new NextResponse(await r.text(), {
-    status: r.status,
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const { userId } = await context.params;
+    const safeUserId = encodeURIComponent(userId);
+
+    const url = join(BACKEND, `api/${safeUserId}/tasks/`);
+    const r = await fetch(url, { cache: "no-store" });
+
+    return new NextResponse(await r.text(), {
+      status: r.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(
   req: Request,
-  { params }: { params: { userId: string } }
+  context: { params: Promise<{ userId: string }> }
 ) {
-  const url = join(BACKEND, `api/${encodeURIComponent(params.userId)}/tasks/`);
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: await req.text(),
-  });
-  return new NextResponse(await r.text(), {
-    status: r.status,
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const { userId } = await context.params;
+    const safeUserId = encodeURIComponent(userId);
+
+    const url = join(BACKEND, `api/${safeUserId}/tasks/`);
+
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: await req.text(),
+    });
+
+    return new NextResponse(await r.text(), {
+      status: r.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
+  }
 }
