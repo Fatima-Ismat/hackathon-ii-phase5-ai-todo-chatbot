@@ -1,42 +1,54 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const BACKEND =
+  process.env.BACKEND_URL ||
+  process.env.HF_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://127.0.0.1:8000";
+
+function joinUrl(base: string, path: string) {
+  return ${base.replace(/\/+$/, "")}/;
+}
 
 export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ userId: string }> }
+  _req: Request,
+  { params }: { params: { userId: string } }
 ) {
-  if (!API_BASE) return NextResponse.json({ error: "NEXT_PUBLIC_API_BASE missing" }, { status: 500 });
-
-  const { userId } = await context.params;
-
-  const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/tasks/`, {
-    cache: "no-store",
-  });
-
-  const text = await res.text();
-  let data: any = {};
-  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-  return NextResponse.json(data, { status: res.status });
+  try {
+    const userId = encodeURIComponent(params.userId);
+    const url = joinUrl(BACKEND, /api//tasks/);
+    const r = await fetch(url, { cache: "no-store" });
+    const t = await r.text();
+    return new NextResponse(t, {
+      status: r.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+  }
 }
 
 export async function POST(
-  req: NextRequest,
-  context: { params: Promise<{ userId: string }> }
+  req: Request,
+  { params }: { params: { userId: string } }
 ) {
-  if (!API_BASE) return NextResponse.json({ error: "NEXT_PUBLIC_API_BASE missing" }, { status: 500 });
+  try {
+    const userId = encodeURIComponent(params.userId);
+    const url = joinUrl(BACKEND, /api//tasks/);
+    const body = await req.text();
 
-  const { userId } = await context.params;
-  const body = await req.json();
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
 
-  const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/tasks/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const text = await res.text();
-  let data: any = {};
-  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-  return NextResponse.json(data, { status: res.status });
+    const t = await r.text();
+    return new NextResponse(t, {
+      status: r.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+  }
 }
