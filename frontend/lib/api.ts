@@ -1,54 +1,54 @@
-﻿const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
-
+﻿// frontend/lib/api.ts
 export type Task = {
   id: number;
+  user_id: string;
   title: string;
   completed: boolean;
 };
 
-export async function apiListTasks(userId: string): Promise<Task[]> {
-  const res = await fetch(`${API_BASE}/api/${userId}/tasks`, {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("list failed");
-  return res.json();
+function safeUserId(userId: string) {
+  return encodeURIComponent(userId);
 }
 
-export async function apiAddTask(userId: string, title: string): Promise<Task> {
-  const res = await fetch(`${API_BASE}/api/${userId}/tasks`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-  });
-  if (!res.ok) throw new Error("add failed");
-  return res.json();
-}
+/**
+ * IMPORTANT:
+ * - Browser/client requests MUST go to same-origin Next.js routes (/api/...)
+ *   to avoid CORS + mixed content.
+ * - Those Next routes will talk to HuggingFace backend using server-side fetch.
+ */
+export const api = {
+  async listTasks(userId: string): Promise<Task[]> {
+    const res = await fetch(`/api/${safeUserId(userId)}/tasks`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Failed to list tasks (${res.status})`);
+    return res.json();
+  },
 
-export async function apiToggleComplete(
-  userId: string,
-  taskId: number,
-  completed: boolean
-): Promise<Task> {
-  const res = await fetch(
-    `${API_BASE}/api/${userId}/tasks/${taskId}`,
-    {
-      method: "PATCH",
+  async addTask(userId: string, title: string): Promise<Task> {
+    const res = await fetch(`/api/${safeUserId(userId)}/tasks`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ completed }),
-    }
-  );
-  if (!res.ok) throw new Error("update failed");
-  return res.json();
-}
+      body: JSON.stringify({ title }),
+    });
+    if (!res.ok) throw new Error(`Failed to add task (${res.status})`);
+    return res.json();
+  },
 
-export async function apiDeleteTask(
-  userId: string,
-  taskId: number
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/api/${userId}/tasks/${taskId}`,
-    { method: "DELETE" }
-  );
-  if (!res.ok) throw new Error("delete failed");
-}
+  async toggleComplete(userId: string, taskId: number): Promise<Task> {
+    const res = await fetch(`/api/${safeUserId(userId)}/tasks/${taskId}`, {
+      method: "PATCH",
+    });
+    if (!res.ok) throw new Error(`Failed to toggle (${res.status})`);
+    return res.json();
+  },
+
+  async deleteTask(userId: string, taskId: number): Promise<{ ok: boolean }> {
+    const res = await fetch(`/api/${safeUserId(userId)}/tasks/${taskId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(`Failed to delete (${res.status})`);
+    return res.json();
+  },
+};

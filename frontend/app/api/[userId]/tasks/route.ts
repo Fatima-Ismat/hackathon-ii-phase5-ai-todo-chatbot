@@ -1,56 +1,38 @@
 ﻿import { NextResponse } from "next/server";
 
 const BACKEND =
-  process.env.BACKEND_URL ||
   process.env.HF_BACKEND_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://127.0.0.1:8000";
+  process.env.BACKEND_URL ||
+  "https://ismat110-todo-backend-phase5.hf.space";
 
-function joinUrl(base: string, path: string) {
-  const b = base.replace(/\/+$/, "");
-  const p = path.replace(/^\/+/, "");
-  return b + "/" + p;
+function join(base: string, path: string) {
+  return base.replace(/\/+$/, "") + "/" + path.replace(/^\/+/, "");
 }
 
 export async function GET(
   _req: Request,
   { params }: { params: { userId: string } }
 ) {
-  try {
-    const userId = encodeURIComponent(params.userId);
-    const url = joinUrl(BACKEND, "/api/" + userId + "/tasks/");
-    const r = await fetch(url, { cache: "no-store" });
-    const t = await r.text();
-    return new NextResponse(t, {
-      status: r.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
-  }
+  const url = join(BACKEND, `api/${encodeURIComponent(params.userId)}/tasks/`);
+  const r = await fetch(url, { cache: "no-store" });
+  return new NextResponse(await r.text(), {
+    status: r.status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export async function POST(
   req: Request,
   { params }: { params: { userId: string } }
 ) {
-  try {
-    const userId = encodeURIComponent(params.userId);
-    const url = joinUrl(BACKEND, "/api/" + userId + "/tasks/");
-    const body = await req.text();
-
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
-
-    const t = await r.text();
-    return new NextResponse(t, {
-      status: r.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
-  }
+  const url = join(BACKEND, `api/${encodeURIComponent(params.userId)}/tasks/`);
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: await req.text(),
+  });
+  return new NextResponse(await r.text(), {
+    status: r.status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
