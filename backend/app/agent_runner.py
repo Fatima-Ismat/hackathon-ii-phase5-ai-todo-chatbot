@@ -1,32 +1,28 @@
-"""
-Phase 5 - Agent Runner (FINAL, CLEAN, ASCII-SAFE)
+﻿"""
+Phase 5 - Agent Runner (STABLE)
 
-Features:
-- Per-user chat history (in-memory)
-- Command parsing:
+Fixes:
+- No AI fallback (prevents 500 crash from broken ConversationMemory)
+- Commands supported:
   add <title>
   list [all|pending|completed]
-  complete <id>
-  delete <id>
-- Fallback to AI chat
-- ASCII-safe output (no Unicode symbols)
+  complete <id|title>
+  delete <id|title>
+  stats
+  help
+- Per-user history (in-memory)
+- ASCII-safe replies
 """
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional, Literal
 import re
 
-from sqlalchemy.orm import Session
+from app.tools.tasks import add_task, list_tasks, complete_task, delete_task
 
-from app.agents.agent import TodoAgent
-from app.db import SessionLocal
-from app.models import Task
-
-# user_id -> chat history
+# user_id -> chat history (simple in-memory transcript)
 _USER_HISTORY: Dict[str, List[dict]] = {}
-
-_agent = TodoAgent()
 
 
 def _get_history(user_id: str) -> List[dict]:
@@ -42,98 +38,70 @@ def _format_tasks(tasks: List[dict]) -> str:
         return "No tasks."
     lines: List[str] = []
     for t in tasks:
-        status = "[x]" if t.get("completed") else "[ ]"
+        status = "[x]" if bool(t.get("completed")) else "[ ]"
         lines.append(f"{status} ({t.get('id')}) {t.get('title')}")
     return "\n".join(lines)
 
 
-def _db_session() -> Session:
-    return SessionLocal()
+def _find_task_id_by_title(user_id: str, title: str) -> Optional[int]:
+    title_norm = title.strip().lower()
+    if not title_norm:
+        return None
+    tasks = list_tasks(user_id, "all")  # type: ignore[arg-type]
+    for t in tasks:
+        if str(t.get("title", "")).strip().lower() == title_norm:
+            return int(t.get("id"))
+    return None
 
 
-# -------------------------
-# DB-backed task operations
-# -------------------------
-
-def _add_task_db(user_id: str, title: str) -> dict:
-    db = _db_session()
-    try:
-        task = Task(user_id=user_id, title=title, completed=False)
-        db.add(task)
-        db.commit()
-        db.refresh(task)
-        return {"id": task.id, "title": task.title, "completed": task.completed}
-    finally:
-        db.close()
+def _parse_id_or_title(user_id: str, raw: str) -> Optional[int]:
+    raw = raw.strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        return int(raw)
+    return _find_task_id_by_title(user_id, raw)
 
 
-def _list_tasks_db(user_id: str, status: str = "all") -> List[dict]:
-    db = _db_session()
-    try:
-        q = db.query(Task).filter(Task.user_id == user_id)
+def _help_text() -> str:
+    return (
+        "Commands:\n"
+        "  add <title>\n"
+        "  list [all|pending|completed]\n"
+        "  complete <id|title>\n"
+        "  delete <id|title>\n"
+        "  stats\n"
+        "Examples:\n"
+        "  add milk\n"
+        "  list\n"
+        "  complete 1\n"
+        "  complete milk\n"
+        "  delete 1\n"
+    )
 
-        status = (status or "all").lower()
-        if status == "pending":
-            q = q.filter(Task.completed.is_(False))
-        elif status == "completed":
-            q = q.filter(Task.completed.is_(True))
-
-        rows = q.order_by(Task.id.asc()).all()
-        return [{"id": t.id, "title": t.title, "completed": t.completed} for t in rows]
-    finally:
-        db.close()
-
-
-def _complete_task_db(user_id: str, task_id: int) -> dict | None:
-    db = _db_session()
-    try:
-        task = (
-            db.query(Task)
-            .filter(Task.user_id == user_id, Task.id == task_id)
-            .first()
-        )
-        if not task:
-            return None
-
-        task.completed = True
-        db.commit()
-        return {"id": task.id, "title": task.title, "completed": task.completed}
-    finally:
-        db.close()
-
-
-def _delete_task_db(user_id: str, task_id: int) -> bool:
-    db = _db_session()
-    try:
-        task = (
-            db.query(Task)
-            .filter(Task.user_id == user_id, Task.id == task_id)
-            .first()
-        )
-        if not task:
-            return False
-
-        db.delete(task)
-        db.commit()
-        return True
-    finally:
-        db.close()
-
-
-# -------------------------
-# Chat runner
-# -------------------------
 
 async def run_user_chat(user_id: str, message: str) -> str:
     history = _get_history(user_id)
     _append(history, "user", message)
 
-    text = message.strip()
+    text = (message or "").strip()
+
+    # ---- HELP ----
+    if re.match(r"^(help|\?)$", text, re.I):
+        reply = _help_text()
+        _append(history, "assistant", reply)
+        return reply
 
     # ---- ADD TASK ----
     m = re.match(r"^add\s+(.+)$", text, re.I)
     if m:
-        task = _add_task_db(user_id, m.group(1))
+        title = m.group(1).strip()
+        if not title:
+            reply = "Please provide a title. Example: add milk"
+            _append(history, "assistant", reply)
+            return reply
+
+        task = add_task(user_id, title)
         reply = f"Added task ({task['id']}): {task['title']}"
         _append(history, "assistant", reply)
         return reply
@@ -142,28 +110,59 @@ async def run_user_chat(user_id: str, message: str) -> str:
     m = re.match(r"^list(?:\s+(all|pending|completed))?$", text, re.I)
     if m:
         status = (m.group(1) or "all").lower()
-        tasks = _list_tasks_db(user_id, status)
+        if status not in ("all", "pending", "completed"):
+            status = "all"
+        tasks = list_tasks(user_id, status)  # type: ignore[arg-type]
         reply = _format_tasks(tasks)
         _append(history, "assistant", reply)
         return reply
 
-    # ---- COMPLETE TASK ----
-    m = re.match(r"^complete\s+(\d+)$", text, re.I)
-    if m:
-        t = _complete_task_db(user_id, int(m.group(1)))
-        reply = f"Completed task ({t['id']})." if t else "Task not found."
+    # ---- STATS ----
+    if re.match(r"^stats$", text, re.I):
+        tasks = list_tasks(user_id, "all")  # type: ignore[arg-type]
+        total = len(tasks)
+        done = len([t for t in tasks if bool(t.get("completed"))])
+        pending = total - done
+        reply = f"Total: {total}\nPending: {pending}\nCompleted: {done}"
         _append(history, "assistant", reply)
         return reply
 
-    # ---- DELETE TASK ----
-    m = re.match(r"^delete\s+(\d+)$", text, re.I)
+    # ---- COMPLETE TASK (id OR title) ----
+    m = re.match(r"^complete\s+(.+)$", text, re.I)
     if m:
-        ok = _delete_task_db(user_id, int(m.group(1)))
+        raw = m.group(1).strip()
+        tid = _parse_id_or_title(user_id, raw)
+        if tid is None:
+            reply = "Task not found."
+            _append(history, "assistant", reply)
+            return reply
+
+        t = complete_task(user_id, tid, True)
+        reply = f"Completed task ({tid})." if t else "Task not found."
+        _append(history, "assistant", reply)
+        return reply
+
+    # ---- DELETE TASK (id OR title) ----
+    m = re.match(r"^(delete|remove)\s+(.+)$", text, re.I)
+    if m:
+        raw = m.group(2).strip()
+        tid = _parse_id_or_title(user_id, raw)
+        if tid is None:
+            reply = "Task not found."
+            _append(history, "assistant", reply)
+            return reply
+
+        ok = delete_task(user_id, tid)
         reply = "Task deleted." if ok else "Task not found."
         _append(history, "assistant", reply)
         return reply
 
-    # ---- FALLBACK: AI CHAT ----
-    reply = await _agent.run(text, history=history)
+    # ---- FALLBACK (NO AI) ----
+    reply = "I can only run todo commands right now.\n\n" + _help_text()
     _append(history, "assistant", reply)
     return reply
+
+
+# Backwards-compat alias for routers/chat.py import
+async def run_todo_agent(user_id: str, message: str) -> str:
+    return await run_user_chat(user_id=user_id, message=message)

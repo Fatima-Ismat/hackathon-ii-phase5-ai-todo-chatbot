@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -31,8 +31,6 @@ export default function ChatbotWidget({ userId, onMutate }: Props) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [conversationId, setConversationId] = useState<number | null>(null);
-
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -53,6 +51,13 @@ export default function ChatbotWidget({ userId, onMutate }: Props) {
     if (open && !minimized) setTimeout(() => inputRef.current?.focus(), 0);
   }, [open, minimized]);
 
+  // user change pe conversation/messages reset (UI same)
+  useEffect(() => {
+    setMessages([]);
+    setInput("");
+    setLoading(false);
+  }, [userId]);
+
   async function send() {
     const text = input.trim();
     if (!text || loading) return;
@@ -69,17 +74,21 @@ export default function ChatbotWidget({ userId, onMutate }: Props) {
     setLoading(true);
 
     try {
-      // ✅ IMPORTANT: same-origin proxy route (no CORS)
+      // ✅ same-origin proxy route (no CORS)
+      // ✅ IMPORTANT: conversation_id REMOVE (backend accept nahi karta)
       const res = await fetch(`/api/${encodeURIComponent(userId)}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          conversation_id: conversationId,
-        }),
+        body: JSON.stringify({ message: text }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const raw = await res.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { raw };
+      }
 
       if (!res.ok) {
         const msg =
@@ -93,15 +102,15 @@ export default function ChatbotWidget({ userId, onMutate }: Props) {
         throw new Error(msg);
       }
 
-      if (typeof data?.conversation_id === "number") {
-        setConversationId(data.conversation_id);
-      }
-
       const reply =
-        typeof data?.response === "string"
-          ? data.response
-          : typeof data?.reply === "string"
+        typeof data?.reply === "string"
           ? data.reply
+          : typeof data?.response === "string"
+          ? data.response
+          : typeof data?.message === "string"
+          ? data.message
+          : typeof data?.raw === "string"
+          ? data.raw
           : "No response";
 
       const botMsg: ChatMessage = {
@@ -113,23 +122,12 @@ export default function ChatbotWidget({ userId, onMutate }: Props) {
 
       setMessages((prev) => [...prev, botMsg]);
 
-      const didMutate =
-        data?.did_mutate === true ||
-        data?.mutated === true ||
-        ["add", "delete", "remove", "complete", "done", "toggle", "clear"].some(
-          (k) => String(data?.action || "").toLowerCase().includes(k)
-        ) ||
-        /(^|\s)(add|delete|remove|complete|done|toggle|clear)\b/i.test(text);
-
-      if (didMutate) {
-        fireTasksRefresh();
-        if (onMutate) await onMutate();
-      }
+      // ✅ MAIN FIX: successful chat ke baad ALWAYS dashboard refresh
+      fireTasksRefresh();
+      if (onMutate) await onMutate();
     } catch (err) {
       const msg =
-        err instanceof Error
-          ? err.message
-          : "Error: backend connect nahi hua.";
+        err instanceof Error ? err.message : "Error: backend connect nahi hua.";
 
       setMessages((prev) => [
         ...prev,

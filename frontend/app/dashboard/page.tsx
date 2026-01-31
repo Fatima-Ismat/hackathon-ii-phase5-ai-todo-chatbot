@@ -45,7 +45,7 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       const data = await apiListTasks(uid);
-      setTasks(Array.isArray(data) ? data : []);
+      setTasks(Array.isArray(data) ? (data.filter(Boolean) as Task[]) : []);
     } catch {
       toast.error("Failed to load tasks");
     } finally {
@@ -77,6 +77,7 @@ export default function DashboardPage() {
     router.push("/signin");
   }, [router]);
 
+  // ✅ FIX: add ke baad API se fresh list reload + router.refresh (force UI update)
   const addTask = useCallback(async () => {
     const uid = readUserId();
     const t = title.trim();
@@ -88,16 +89,16 @@ export default function DashboardPage() {
     if (!t) return;
 
     try {
-      const created = await apiAddTask(uid, t);
-      setTasks((prev) => [created, ...prev]);
+      await apiAddTask(uid, t);
       setTitle("");
       toast.success("Task added");
+      await refreshTasks();
+      router.refresh(); // ✅ NEW: force refresh so list render stale na rahe
     } catch {
       toast.error("Add failed");
     }
-  }, [title, readUserId, router]);
+  }, [title, readUserId, router, refreshTasks]);
 
-  // ✅ FIXED: pass completed boolean as 3rd arg (NO UI change)
   const toggleTask = useCallback(
     async (id: number) => {
       const uid = readUserId();
@@ -106,19 +107,18 @@ export default function DashboardPage() {
         return;
       }
 
-      // find current task state
-      const current = tasks.find((t) => t.id === id);
+      const current = tasks.find((t) => t?.id === id);
       const nextCompleted = !(current?.completed ?? false);
 
       try {
         const updated = await apiToggleComplete(uid, id, nextCompleted);
-        setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
         toast.success(updated.completed ? "Task completed" : "Marked as pending");
+        await refreshTasks();
       } catch {
         toast.error("Update failed");
       }
     },
-    [readUserId, router, tasks]
+    [readUserId, router, tasks, refreshTasks]
   );
 
   const deleteTask = useCallback(
@@ -131,13 +131,13 @@ export default function DashboardPage() {
 
       try {
         await apiDeleteTask(uid, id);
-        setTasks((prev) => prev.filter((t) => t.id !== id));
         toast("Task deleted", { icon: "🗑️" });
+        await refreshTasks();
       } catch {
         toast.error("Delete failed");
       }
     },
-    [readUserId, router]
+    [readUserId, router, refreshTasks]
   );
 
   const clearCompleted = useCallback(async () => {
@@ -147,17 +147,20 @@ export default function DashboardPage() {
       return;
     }
 
-    const completedIds = tasks.filter((t) => t.completed).map((t) => t.id);
+    const completedIds = (tasks ?? [])
+      .filter((t) => t?.completed)
+      .map((t) => t.id);
+
     if (completedIds.length === 0) return;
 
     try {
       await Promise.all(completedIds.map((id) => apiDeleteTask(uid, id)));
-      setTasks((prev) => prev.filter((t) => !t.completed));
       toast("Completed tasks cleared", { icon: "🧹" });
+      await refreshTasks();
     } catch {
       toast.error("Clear completed failed");
     }
-  }, [tasks, readUserId, router]);
+  }, [tasks, readUserId, router, refreshTasks]);
 
   const onKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -189,27 +192,34 @@ export default function DashboardPage() {
   }, [onKeyDown]);
 
   const stats = useMemo(() => {
-    const total = tasks.length;
-    const done = tasks.filter((t) => t.completed).length;
+    const safeTasks = (tasks ?? []).filter(Boolean) as Task[];
+    const total = safeTasks.length;
+    const done = safeTasks.filter((t) => t?.completed).length;
     const pending = total - done;
     return { total, done, pending };
   }, [tasks]);
 
   const filtered = useMemo(() => {
+    const safeTasks = (tasks ?? []).filter(Boolean) as Task[];
     const q = query.trim().toLowerCase();
-    return tasks.filter((t) => {
-      const matchQuery = q ? t.title.toLowerCase().includes(q) : true;
+
+    return safeTasks.filter((t) => {
+      const titleStr = (t?.title ?? "").toLowerCase();
+      const matchQuery = q ? titleStr.includes(q) : true;
+
+      const isCompleted = !!t?.completed;
       const matchTab =
-        tab === "all" ? true : tab === "pending" ? !t.completed : t.completed;
+        tab === "all" ? true : tab === "pending" ? !isCompleted : isCompleted;
+
       return matchQuery && matchTab;
     });
   }, [tasks, query, tab]);
 
   const emptyMessage = useMemo(() => {
     if (loading) return "Loading…";
-    if (tasks.length === 0) return "No tasks yet";
+    if ((tasks ?? []).filter(Boolean).length === 0) return "No tasks yet";
     return "No tasks match your view";
-  }, [tasks.length, loading]);
+  }, [tasks, loading]);
 
   return (
     <div className="min-h-screen bg-[#070A12] text-white">
@@ -325,7 +335,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {filtered.map((t) => (
+          {(filtered ?? []).filter(Boolean).map((t) => (
             <div
               key={t.id}
               className="group flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur transition hover:bg-white/7"
@@ -333,7 +343,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  checked={t.completed}
+                  checked={!!t.completed}
                   onChange={() => void toggleTask(t.id)}
                   className="h-4 w-4 accent-cyan-400"
                 />

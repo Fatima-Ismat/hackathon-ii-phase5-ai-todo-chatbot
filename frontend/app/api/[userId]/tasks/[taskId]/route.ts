@@ -1,44 +1,39 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-type Ctx = { params: Promise<{ userId: string; taskId: string }> };
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ userId: string; taskId: string }> }
+) {
+  if (!API_BASE) return NextResponse.json({ error: "NEXT_PUBLIC_API_BASE missing" }, { status: 500 });
 
-export async function PATCH(request: NextRequest, context: Ctx) {
   const { userId, taskId } = await context.params;
-  const body = await request.json();
 
-  const res = await fetch(
-    `${API_BASE}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
 
   const text = await res.text();
-  let data: any = text;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {}
-
+  let data: any = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
   return NextResponse.json(data, { status: res.status });
 }
 
-export async function DELETE(_request: NextRequest, context: Ctx) {
+export async function PATCH(
+  _req: NextRequest,
+  context: { params: Promise<{ userId: string; taskId: string }> }
+) {
+  if (!API_BASE) return NextResponse.json({ error: "NEXT_PUBLIC_API_BASE missing" }, { status: 500 });
+
   const { userId, taskId } = await context.params;
 
-  const res = await fetch(
-    `${API_BASE}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`,
-    { method: "DELETE" }
-  );
+  const res = await fetch(`${API_BASE}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}/complete`, {
+    method: "PATCH",
+  });
 
   const text = await res.text();
-  let data: any = text;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {}
-
+  let data: any = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
   return NextResponse.json(data, { status: res.status });
 }

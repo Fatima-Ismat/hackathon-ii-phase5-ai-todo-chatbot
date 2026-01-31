@@ -1,45 +1,44 @@
-"""
-Phase 5 - Tools Skeleton (MCP-ready)
+﻿from __future__ import annotations
 
-Abhi: in-memory tasks (per user)
-Baad me: yahin functions DB (SQLModel/SQLAlchemy/Neon) se connect honge.
-"""
-
-from __future__ import annotations
-from typing import Dict, List, Literal, TypedDict, Optional
-import itertools
+from typing import Dict, List, Optional, Literal, TypedDict
 
 
 class Task(TypedDict):
     id: int
+    user_id: str
     title: str
     completed: bool
 
 
 # In-memory store: user_id -> tasks
 _TASKS: Dict[str, List[Task]] = {}
-_ID_COUNTER = itertools.count(1)
+_NEXT_ID: int = 1
 
 
-def _get_user_tasks(user_id: str) -> List[Task]:
+def _ensure_user(user_id: str) -> List[Task]:
     return _TASKS.setdefault(user_id, [])
 
 
 def add_task(user_id: str, title: str) -> Task:
-    title = (title or "").strip()
-    if not title:
-        raise ValueError("title is required")
+    global _NEXT_ID
+    tasks = _ensure_user(user_id)
 
-    task: Task = {"id": next(_ID_COUNTER), "title": title, "completed": False}
-    _get_user_tasks(user_id).append(task)
+    task: Task = {
+        "id": _NEXT_ID,
+        "user_id": user_id,
+        "title": title.strip(),
+        "completed": False,
+    }
+    _NEXT_ID += 1
+    tasks.insert(0, task)
     return task
 
 
 def list_tasks(
-    user_id: str,
-    status: Literal["all", "pending", "completed"] = "all",
+    user_id: str, status: Literal["all", "pending", "completed"] = "all"
 ) -> List[Task]:
-    tasks = _get_user_tasks(user_id)
+    tasks = list(_ensure_user(user_id))
+
     if status == "pending":
         return [t for t in tasks if not t["completed"]]
     if status == "completed":
@@ -47,17 +46,23 @@ def list_tasks(
     return tasks
 
 
-def complete_task(user_id: str, task_id: int) -> Optional[Task]:
-    tasks = _get_user_tasks(user_id)
+def complete_task(
+    user_id: str, task_id: int, completed: Optional[bool] = None
+) -> Optional[Task]:
+    tasks = _ensure_user(user_id)
     for t in tasks:
         if t["id"] == task_id:
-            t["completed"] = True
+            # completed=None => toggle, warna given bool set
+            if completed is None:
+                t["completed"] = not t["completed"]
+            else:
+                t["completed"] = bool(completed)
             return t
     return None
 
 
 def delete_task(user_id: str, task_id: int) -> bool:
-    tasks = _get_user_tasks(user_id)
+    tasks = _ensure_user(user_id)
     before = len(tasks)
     _TASKS[user_id] = [t for t in tasks if t["id"] != task_id]
     return len(_TASKS[user_id]) != before

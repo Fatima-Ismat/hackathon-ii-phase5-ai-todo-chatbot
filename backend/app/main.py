@@ -1,26 +1,22 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db import init_db
-from app.router import chat
-from app.router import tasks
+from app.routers.tasks import router as tasks_router
+from app.routers.chat import router as chat_router
 
-app = FastAPI(title="Todo Backend")
-
-@app.on_event("startup")
-def on_startup():
-    init_db()
+app = FastAPI(title="Todo Backend", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(tasks.router, prefix="/api")
-app.include_router(chat.router, prefix="/api")
+app.include_router(tasks_router)
+app.include_router(chat_router)
+
 
 @app.get("/health")
 def health():
