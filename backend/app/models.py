@@ -26,7 +26,12 @@ class Task(Base):
 
     user_id = Column(String, index=True, nullable=False)
     title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+
     completed = Column(Boolean, default=False, nullable=False)
+
+    # NEW: Due date (Phase-5 high ROI feature)
+    due_date = Column(DateTime, nullable=True)
 
     created_at = Column(
         DateTime,

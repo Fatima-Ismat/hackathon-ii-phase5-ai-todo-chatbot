@@ -1,32 +1,48 @@
-﻿import { NextResponse } from "next/server";
+﻿// frontend/app/api/[userId]/tasks/route.ts
+import { NextResponse } from "next/server";
 
-const BACKEND =
-  process.env.HF_BACKEND_URL ||
-  process.env.BACKEND_URL ||
-  "https://ismat110-todo-backend-phase5.hf.space";
+function getBase() {
+  const raw =
+    process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.API_BASE ||
+    process.env.BACKEND_URL ||
+    "http://127.0.0.1:8000";
 
-function join(base: string, path: string) {
-  return base.replace(/\/+$/, "") + "/" + path.replace(/^\/+/, "");
+  return raw.replace(/\/+$/, "");
+}
+
+// If base already ends with /api, don't add /api again
+function apiUrl(path: string) {
+  const base = getBase();
+  if (base.endsWith("/api")) return `${base}${path}`;
+  return `${base}/api${path}`;
 }
 
 export async function GET(
   _req: Request,
-  context: { params: Promise<{ userId: string }> }
+  ctx: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { userId } = await context.params;
-    const safeUserId = encodeURIComponent(userId);
+    const { userId } = await ctx.params;
 
-    const url = join(BACKEND, `api/${safeUserId}/tasks/`);
-    const r = await fetch(url, { cache: "no-store" });
+    if (!userId) {
+      return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+    }
 
-    return new NextResponse(await r.text(), {
-      status: r.status,
-      headers: { "Content-Type": "application/json" },
+    const upstream = await fetch(apiUrl(`/${encodeURIComponent(userId)}/tasks`), {
+      cache: "no-store",
+    });
+
+    const text = await upstream.text();
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") || "application/json",
+      },
     });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Server error" },
+      { error: e?.message || "Proxy GET failed" },
       { status: 500 }
     );
   }
@@ -34,27 +50,35 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  context: { params: Promise<{ userId: string }> }
+  ctx: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { userId } = await context.params;
-    const safeUserId = encodeURIComponent(userId);
+    const { userId } = await ctx.params;
 
-    const url = join(BACKEND, `api/${safeUserId}/tasks/`);
+    if (!userId) {
+      return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+    }
 
-    const r = await fetch(url, {
+    const body = await req.text();
+
+    const upstream = await fetch(apiUrl(`/${encodeURIComponent(userId)}/tasks`), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: await req.text(),
+      headers: {
+        "Content-Type": req.headers.get("content-type") || "application/json",
+      },
+      body,
     });
 
-    return new NextResponse(await r.text(), {
-      status: r.status,
-      headers: { "Content-Type": "application/json" },
+    const text = await upstream.text();
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") || "application/json",
+      },
     });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Server error" },
+      { error: e?.message || "Proxy POST failed" },
       { status: 500 }
     );
   }

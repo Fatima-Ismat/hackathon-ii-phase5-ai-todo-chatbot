@@ -1,445 +1,479 @@
-﻿"use client";
+﻿// frontend/app/dashboard/page.tsx
+"use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-
 import ChatbotWidget from "@/components/ChatbotWidget";
-
 import {
   apiAddTask,
   apiDeleteTask,
   apiListTasks,
   apiToggleComplete,
-  type Task as ApiTask,
-} from "../../lib/api";
+  type Task,
+} from "@/lib/api";
 
 const AUTH_KEY = "todo_user_id";
+const TOAST_EVENT = "todo:toast";
 
-type Task = ApiTask;
 type Tab = "all" | "pending" | "completed";
 
+function normalizeSpaces(s: string) {
+  return (s || "").replace(/\s+/g, " ").trim();
+}
+
+function toNiceError(e: any) {
+  try {
+    if (!e) return "Unknown error";
+    if (typeof e === "string") return e;
+    if (e?.message && typeof e.message === "string") return e.message;
+    return JSON.stringify(e); // avoid [object Object]
+  } catch {
+    return "Unknown error";
+  }
+}
+
+function fmtDue(d?: string | null) {
+  if (!d) return "";
+  const m = String(d).match(/\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : String(d);
+}
+
 export default function DashboardPage() {
-  const router = useRouter();
-
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [title, setTitle] = useState("");
-  const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<Tab>("all");
-  const [loading, setLoading] = useState(true);
-
-  // ✅ keep userId in state so Chatbot + Dashboard always aligned
-  const [userId, setUserId] = useState<string>("");
-
-  const readUserId = useCallback(() => {
-    return typeof window !== "undefined" ? localStorage.getItem(AUTH_KEY) : null;
+  const userId = useMemo(() => {
+    try {
+      return localStorage.getItem(AUTH_KEY) || "";
+    } catch {
+      return "";
+    }
   }, []);
 
+  const [loading, setLoading] = useState(false);
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tab, setTab] = useState<Tab>("all");
+
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState(""); // YYYY-MM-DD
+
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = normalizeSpaces(search).toLowerCase();
+    const base =
+      tab === "pending"
+        ? tasks.filter((t) => !t.completed)
+        : tab === "completed"
+        ? tasks.filter((t) => t.completed)
+        : tasks;
+
+    if (!q) return base;
+
+    return base.filter((t) => {
+      const hay = `${t.title ?? ""} ${t.description ?? ""} ${fmtDue(
+        (t as any).due_date
+      )}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [tasks, tab, search]);
+
+  const stats = useMemo(() => {
+    const total = tasks.length;
+    const completed = tasks.filter((t) => t.completed).length;
+    const pending = total - completed;
+    return { total, pending, completed };
+  }, [tasks]);
+
   const refreshTasks = useCallback(async () => {
-    const uid = readUserId();
-    if (!uid) {
-      router.push("/signin");
+    if (!userId) return;
+    try {
+      setLoading(true);
+      const list = await apiListTasks(userId);
+      setTasks(Array.isArray(list) ? list : []);
+    } catch (e: any) {
+      toast.error(toNiceError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    refreshTasks();
+  }, [refreshTasks]);
+
+  // ✅ Debounced refresh on chatbot event (no flicker)
+  const refreshTimer = useRef<number | null>(null);
+  useEffect(() => {
+    const handler = () => {
+      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+      refreshTimer.current = window.setTimeout(() => {
+        void refreshTasks();
+      }, 700);
+    };
+
+    window.addEventListener(TOAST_EVENT, handler as any);
+    return () => {
+      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+      window.removeEventListener(TOAST_EVENT, handler as any);
+    };
+  }, [refreshTasks]);
+
+  const addTask = useCallback(async () => {
+    const t = normalizeSpaces(title);
+    if (!t) {
+      toast.error("Task title required");
+      return;
+    }
+    if (!userId) {
+      toast.error("Please sign in first");
       return;
     }
 
     try {
       setLoading(true);
-      const data = await apiListTasks(uid);
-      setTasks(Array.isArray(data) ? (data.filter(Boolean) as Task[]) : []);
-    } catch {
-      toast.error("Failed to load tasks");
+      await apiAddTask({
+        userId,
+        title: t,
+        description: normalizeSpaces(description) || undefined,
+        due_date: dueDate || undefined,
+      });
+      toast.success("Task added");
+      setTitle("");
+      setDescription("");
+      setDueDate("");
+      await refreshTasks(); // ✅ OK for ADD
+    } catch (e: any) {
+      toast.error(toNiceError(e));
     } finally {
       setLoading(false);
     }
-  }, [readUserId, router]);
+  }, [title, description, dueDate, userId, refreshTasks]);
 
-  // ✅ on mount: set userId + load tasks
-  useEffect(() => {
-    const uid = readUserId();
-    if (!uid) {
-      router.push("/signin");
-      return;
-    }
-    setUserId(uid);
-    void refreshTasks();
-  }, [readUserId, router, refreshTasks]);
-
-  // ✅ optional global refresh hook (if you dispatch events)
-  useEffect(() => {
-    const handler = () => void refreshTasks();
-    window.addEventListener("tasks:refresh", handler as EventListener);
-    return () =>
-      window.removeEventListener("tasks:refresh", handler as EventListener);
-  }, [refreshTasks]);
-
-  const signOut = useCallback(() => {
-    localStorage.removeItem(AUTH_KEY);
-    router.push("/signin");
-  }, [router]);
-
-  // ✅ FIX: add ke baad API se fresh list reload + router.refresh (force UI update)
-  const addTask = useCallback(async () => {
-    const uid = readUserId();
-    const t = title.trim();
-
-    if (!uid) {
-      router.push("/signin");
-      return;
-    }
-    if (!t) return;
-
-    try {
-      await apiAddTask(uid, t);
-      setTitle("");
-      toast.success("Task added");
-      await refreshTasks();
-      router.refresh(); // ✅ NEW: force refresh so list render stale na rahe
-    } catch {
-      toast.error("Add failed");
-    }
-  }, [title, readUserId, router, refreshTasks]);
-
-  const toggleTask = useCallback(
+  const handleDelete = useCallback(
     async (id: number) => {
-      const uid = readUserId();
-      if (!uid) {
-        router.push("/signin");
+      if (!userId) {
+        toast.error("Please sign in first");
         return;
       }
-
-      const current = tasks.find((t) => t?.id === id);
-      const nextCompleted = !(current?.completed ?? false);
-
       try {
-        const updated = await apiToggleComplete(uid, id, nextCompleted);
-        toast.success(updated.completed ? "Task completed" : "Marked as pending");
-        await refreshTasks();
-      } catch {
-        toast.error("Update failed");
+        setLoading(true);
+        await apiDeleteTask(userId, id);
+        toast.success("Task deleted");
+        await refreshTasks(); // ✅ OK for DELETE
+      } catch (e: any) {
+        toast.error(toNiceError(e));
+      } finally {
+        setLoading(false);
       }
     },
-    [readUserId, router, tasks, refreshTasks]
+    [userId, refreshTasks]
   );
 
-  const deleteTask = useCallback(
-    async (id: number) => {
-      const uid = readUserId();
-      if (!uid) {
-        router.push("/signin");
+  // ✅ FIXED: complete flicker/revert removed
+  // - optimistic UI
+  // - apply backend returned updated task
+  // - NO refreshTasks here (that's what caused revert)
+  const handleToggleComplete = useCallback(
+    async (id: number, completed: boolean) => {
+      if (!userId) {
+        toast.error("Please sign in first");
         return;
       }
 
+      // optimistic update
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, completed } : t))
+      );
+
       try {
-        await apiDeleteTask(uid, id);
-        toast("Task deleted", { icon: "🗑️" });
-        await refreshTasks();
-      } catch {
-        toast.error("Delete failed");
+        const updated = await apiToggleComplete(userId, id, completed);
+
+        // apply backend response on same task
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === id ? ({ ...t, ...updated } as Task) : t
+          )
+        );
+
+        toast.success(completed ? "Task completed" : "Task updated");
+      } catch (e: any) {
+        // rollback
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, completed: !completed } : t
+          )
+        );
+        toast.error(toNiceError(e));
       }
     },
-    [readUserId, router, refreshTasks]
+    [userId]
   );
 
   const clearCompleted = useCallback(async () => {
-    const uid = readUserId();
-    if (!uid) {
-      router.push("/signin");
+    if (!userId) return;
+
+    const done = tasks.filter((t) => t.completed);
+    if (!done.length) {
+      toast("No completed tasks");
       return;
     }
 
-    const completedIds = (tasks ?? [])
-      .filter((t) => t?.completed)
-      .map((t) => t.id);
-
-    if (completedIds.length === 0) return;
-
     try {
-      await Promise.all(completedIds.map((id) => apiDeleteTask(uid, id)));
-      toast("Completed tasks cleared", { icon: "🧹" });
+      setLoading(true);
+      for (const t of done) {
+        await apiDeleteTask(userId, t.id);
+      }
+      toast.success("Completed cleared");
       await refreshTasks();
-    } catch {
-      toast.error("Clear completed failed");
+    } catch (e: any) {
+      toast.error(toNiceError(e));
+    } finally {
+      setLoading(false);
     }
-  }, [tasks, readUserId, router, refreshTasks]);
+  }, [tasks, userId, refreshTasks]);
 
-  const onKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        const el = document.getElementById(
-          "task-search"
-        ) as HTMLInputElement | null;
-        el?.focus();
-        return;
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        void addTask();
-        return;
-      }
-
-      if (e.key === "1") setTab("all");
-      if (e.key === "2") setTab("pending");
-      if (e.key === "3") setTab("completed");
-    },
-    [addTask]
-  );
-
-  useEffect(() => {
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onKeyDown]);
-
-  const stats = useMemo(() => {
-    const safeTasks = (tasks ?? []).filter(Boolean) as Task[];
-    const total = safeTasks.length;
-    const done = safeTasks.filter((t) => t?.completed).length;
-    const pending = total - done;
-    return { total, done, pending };
-  }, [tasks]);
-
-  const filtered = useMemo(() => {
-    const safeTasks = (tasks ?? []).filter(Boolean) as Task[];
-    const q = query.trim().toLowerCase();
-
-    return safeTasks.filter((t) => {
-      const titleStr = (t?.title ?? "").toLowerCase();
-      const matchQuery = q ? titleStr.includes(q) : true;
-
-      const isCompleted = !!t?.completed;
-      const matchTab =
-        tab === "all" ? true : tab === "pending" ? !isCompleted : isCompleted;
-
-      return matchQuery && matchTab;
-    });
-  }, [tasks, query, tab]);
-
-  const emptyMessage = useMemo(() => {
-    if (loading) return "Loading…";
-    if ((tasks ?? []).filter(Boolean).length === 0) return "No tasks yet";
-    return "No tasks match your view";
-  }, [tasks, loading]);
+  const signOut = useCallback(() => {
+    try {
+      localStorage.removeItem(AUTH_KEY);
+    } catch {}
+    toast.success("Signed out");
+    window.location.href = "/";
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white">
-      {/* Glow background */}
+    <div className="min-h-screen bg-[#06070b] text-white">
+      {/* ✅ SAME old vibe background: center pink + right cyan */}
       <div className="pointer-events-none fixed inset-0">
-        <div className="absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-fuchsia-500/10 blur-3xl" />
-        <div className="absolute -bottom-40 left-20 h-[520px] w-[520px] rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="absolute right-10 top-24 h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(168,85,247,0.45),transparent_55%),radial-gradient(circle_at_82%_42%,rgba(34,211,238,0.25),transparent_50%),radial-gradient(circle_at_18%_86%,rgba(59,130,246,0.18),transparent_50%)]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/35 to-black/75" />
       </div>
 
-      <div className="relative mx-auto max-w-6xl px-6 py-10">
-        {/* Header */}
-        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative mx-auto w-full max-w-6xl px-6 py-10">
+        {/* top bar */}
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
+            <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
               Premium Dashboard
             </div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-              My Tasks
-            </h1>
-            <p className="mt-1 text-sm text-white/60">
+            <h1 className="mt-3 text-4xl font-bold tracking-tight">My Tasks</h1>
+            <p className="mt-1 text-white/60">
               Search, filter, and manage your work smoothly
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => void clearCompleted()}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 backdrop-blur hover:bg-white/10"
+              onClick={clearCompleted}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 hover:bg-white/10"
             >
               Clear completed
             </button>
             <button
               onClick={signOut}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 backdrop-blur hover:bg-white/10"
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 hover:bg-white/10"
             >
               Sign out
             </button>
           </div>
-        </header>
+        </div>
 
-        {/* Stats */}
-        <section className="mb-6 grid gap-3 sm:grid-cols-3">
-          <Stat label="Total" value={stats.total} />
-          <Stat label="Pending" value={stats.pending} />
-          <Stat label="Completed" value={stats.done} />
-        </section>
+        {/* stats cards */}
+        <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+            <div className="text-sm text-white/60">Total</div>
+            <div className="mt-2 text-3xl font-semibold">{stats.total}</div>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+            <div className="text-sm text-white/60">Pending</div>
+            <div className="mt-2 text-3xl font-semibold">{stats.pending}</div>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+            <div className="text-sm text-white/60">Completed</div>
+            <div className="mt-2 text-3xl font-semibold">{stats.completed}</div>
+          </div>
+        </div>
 
-        {/* Controls */}
-        <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-            {/* Add */}
-            <div className="flex flex-1 flex-col gap-3 sm:flex-row">
+        {/* add form */}
+        <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-12 md:items-center">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Add a new task..."
+              className="md:col-span-6 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none placeholder:text-white/35 focus:border-white/20"
+            />
+            <button
+              onClick={addTask}
+              disabled={loading}
+              className="md:col-span-2 w-full rounded-2xl px-4 py-3 font-semibold text-white shadow-2xl disabled:opacity-50 bg-gradient-to-r from-fuchsia-500 to-cyan-500 hover:opacity-95"
+            >
+              Add
+            </button>
+
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tasks... (Ctrl+K)"
+              className="md:col-span-4 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none placeholder:text-white/35 focus:border-white/20"
+            />
+
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Description (optional)"
+              className="md:col-span-7 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none placeholder:text-white/35 focus:border-white/20"
+            />
+            <div className="md:col-span-3">
               <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void addTask()}
-                type="text"
-                placeholder="Add a new task..."
-                className="flex-1 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/20"
-              />
-              <button
-                onClick={() => void addTask()}
-                disabled={!title.trim()}
-                className="rounded-2xl bg-gradient-to-r from-fuchsia-500/90 via-violet-500/90 to-cyan-500/90 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-fuchsia-500/10 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Add
-              </button>
-            </div>
-
-            {/* Search */}
-            <div className="lg:w-[320px]">
-              <input
-                id="task-search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                type="text"
-                placeholder="Search tasks... (Ctrl+K)"
-                className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/20"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                type="date"
+                className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none placeholder:text-white/35 focus:border-white/20"
               />
             </div>
+            <div className="md:col-span-2" />
           </div>
 
-          {/* Tabs */}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <TabButton active={tab === "all"} onClick={() => setTab("all")}>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setTab("all")}
+              className={`rounded-full px-4 py-2 text-sm border ${
+                tab === "all"
+                  ? "border-white/20 bg-white/10"
+                  : "border-white/10 bg-white/5 hover:bg-white/10"
+              }`}
+            >
               All ({stats.total})
-            </TabButton>
-            <TabButton
-              active={tab === "pending"}
+            </button>
+            <button
               onClick={() => setTab("pending")}
+              className={`rounded-full px-4 py-2 text-sm border ${
+                tab === "pending"
+                  ? "border-white/20 bg-white/10"
+                  : "border-white/10 bg-white/5 hover:bg-white/10"
+              }`}
             >
               Pending ({stats.pending})
-            </TabButton>
-            <TabButton
-              active={tab === "completed"}
+            </button>
+            <button
               onClick={() => setTab("completed")}
+              className={`rounded-full px-4 py-2 text-sm border ${
+                tab === "completed"
+                  ? "border-white/20 bg-white/10"
+                  : "border-white/10 bg-white/5 hover:bg-white/10"
+              }`}
             >
-              Completed ({stats.done})
-            </TabButton>
+              Completed ({stats.completed})
+            </button>
+
+            <div className="ml-2 text-xs text-white/45">
+              Tip: Chatbot add kare to 1–2 sec me dashboard auto refresh ho jayega.
+            </div>
           </div>
+        </div>
 
-          <p className="mt-3 text-xs text-white/45">
-            Shortcuts: Ctrl/Cmd+K search • Ctrl/Cmd+Enter add • 1/2/3 tabs
-          </p>
-        </section>
-
-        {/* List */}
-        <section className="space-y-3">
-          {filtered.length === 0 && (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/60 backdrop-blur">
-              {emptyMessage}
+        {/* list */}
+        <div className="mt-6 space-y-4">
+          {loading && tasks.length === 0 ? (
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white/70 backdrop-blur-xl">
+              Loading...
             </div>
-          )}
+          ) : null}
 
-          {(filtered ?? []).filter(Boolean).map((t) => (
-            <div
-              key={t.id}
-              className="group flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur transition hover:bg-white/7"
-            >
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={!!t.completed}
-                  onChange={() => void toggleTask(t.id)}
-                  className="h-4 w-4 accent-cyan-400"
-                />
+          {!filtered.length ? (
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-10 text-center text-white/60 backdrop-blur-xl">
+              No tasks found.
+            </div>
+          ) : (
+            filtered
+              .slice()
+              .sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
+              .map((task) => {
+                const due = fmtDue((task as any).due_date);
 
-                <div className="space-y-1">
+                return (
                   <div
-                    className={
-                      t.completed
-                        ? "text-sm line-through text-white/40"
-                        : "text-sm text-white/90"
-                    }
+                    key={task.id}
+                    className={`rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl ${
+                      task.completed ? "opacity-70" : ""
+                    }`}
                   >
-                    {t.title}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        <input
+                          type="checkbox"
+                          checked={task.completed}
+                          onChange={() =>
+                            handleToggleComplete(task.id, !task.completed)
+                          }
+                          className="mt-1 h-5 w-5 accent-emerald-500"
+                        />
+
+                        <div>
+                          <div
+                            className={`text-lg font-semibold ${
+                              task.completed ? "line-through text-white/60" : ""
+                            }`}
+                          >
+                            {task.title}
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {!task.completed ? (
+                              <span className="rounded-full bg-yellow-500/20 px-3 py-1 text-xs text-yellow-200">
+                                Pending
+                              </span>
+                            ) : (
+                              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/75 backdrop-blur-md">
+                                ✅ Completed
+                              </span>
+                            )}
+
+                            {due ? (
+                              <span className="rounded-full bg-cyan-500/15 px-3 py-1 text-xs text-cyan-200">
+                                Due: {due}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          {(task as any).description ? (
+                            <div
+                              className={`mt-2 text-sm ${
+                                task.completed ? "text-white/45" : "text-white/60"
+                              }`}
+                            >
+                              {(task as any).description}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            handleToggleComplete(task.id, !task.completed)
+                          }
+                          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 hover:bg-white/10"
+                        >
+                          {task.completed ? "Undo" : "Complete"}
+                        </button>
+
+                        <button
+                          onClick={() => handleDelete(task.id)}
+                          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 hover:bg-white/10"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
                   </div>
-
-                  {t.completed ? (
-                    <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-200">
-                      Completed
-                    </span>
-                  ) : (
-                    <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-200">
-                      Pending
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <button
-                onClick={() => void deleteTask(t.id)}
-                aria-label="Delete task"
-                title="Delete"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/0 px-3 py-2 text-white/55 transition hover:bg-white/10 hover:text-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-              >
-                <TrashIcon />
-                <span className="hidden text-sm sm:inline">Delete</span>
-              </button>
-            </div>
-          ))}
-        </section>
+                );
+              })
+          )}
+        </div>
       </div>
 
-      {/* ✅ Chatbot Widget (render only when userId exists) */}
-      {userId ? <ChatbotWidget userId={userId} onMutate={refreshTasks} /> : null}
+      <ChatbotWidget />
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur">
-      <div className="text-xs text-white/60">{label}</div>
-      <div className="mt-2 text-2xl font-semibold">{value}</div>
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        active
-          ? "rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-white"
-          : "rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10"
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      className="opacity-95"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M9 3h6m-8 4h10m-9 0 1 14h6l1-14M10 11v7m4-7v7"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

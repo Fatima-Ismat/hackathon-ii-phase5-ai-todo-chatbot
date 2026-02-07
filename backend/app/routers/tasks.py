@@ -1,50 +1,65 @@
 ﻿from __future__ import annotations
 
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.tools.tasks import add_task, list_tasks, complete_task, delete_task
+from app.tools.tasks import add_task, list_tasks, complete_task, delete_task, Task
 
-router = APIRouter()
+router = APIRouter(prefix="/api/{user_id}", tags=["tasks"])
 
 
 class TaskCreate(BaseModel):
     title: str
+    description: Optional[str] = None
+    due_date: Optional[str] = None  # ISO string / YYYY-MM-DD ok
 
 
 class TaskRead(BaseModel):
     id: int
     user_id: str
     title: str
+    description: Optional[str] = None
     completed: bool
+    due_date: Optional[str] = None
 
 
-@router.get("/api/{user_id}/tasks/", response_model=List[TaskRead])
+class TogglePayload(BaseModel):
+    completed: Optional[bool] = None
+
+
+@router.get("/tasks", response_model=List[TaskRead])
 def get_tasks(user_id: str, status: Literal["all", "pending", "completed"] = "all"):
-    return list_tasks(user_id, status)
+    tasks: List[Task] = list_tasks(user_id, status)
+    return tasks
 
 
-@router.post("/api/{user_id}/tasks/", response_model=TaskRead)
-def create_task(user_id: str, payload: TaskCreate):
-    title = (payload.title or "").strip()
-    if not title:
-        raise HTTPException(status_code=422, detail="title is required")
-    return add_task(user_id, title)
+@router.post("/tasks", response_model=TaskRead)
+def post_task(user_id: str, payload: TaskCreate):
+    t = add_task(
+        user_id=user_id,
+        title=payload.title,
+        description=payload.description,
+        due_date=payload.due_date,
+    )
+    return t
 
 
-@router.patch("/api/{user_id}/tasks/{task_id}/complete", response_model=TaskRead)
-def toggle_complete(user_id: str, task_id: int):
-    t = complete_task(user_id, task_id, completed=None)
+# ✅ IMPORTANT: frontend calls:
+# PATCH /api/{userId}/tasks/{taskId}
+@router.patch("/tasks/{task_id}", response_model=TaskRead)
+def patch_task(user_id: str, task_id: int, payload: TogglePayload):
+    # completed None => toggle, completed True/False => set
+    t = complete_task(user_id, task_id, payload.completed)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
     return t
 
 
-@router.delete("/api/{user_id}/tasks/{task_id}")
-def remove_task(user_id: str, task_id: int):
-    ok = delete_task(user_id, task_id)
-    if not ok:
+@router.delete("/tasks/{task_id}")
+def del_task(user_id: str, task_id: int):
+    removed = delete_task(user_id, task_id)
+    if not removed:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"ok": True}

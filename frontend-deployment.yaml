@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ismat-fatima-frontend
+  namespace: todo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ismat-fatima-frontend
+  template:
+    metadata:
+      labels:
+        app: ismat-fatima-frontend
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "ismat-fatima-frontend"
+        dapr.io/app-port: "3000"
+    spec:
+      containers:
+        - name: frontend
+          image: ismatfatimaacr2026.azurecr.io/ismat-fatima-frontend:0.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_BASE_URL
+              value: "http://74.162.178.31"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ismat-fatima-frontend
+  namespace: todo
+spec:
+  type: LoadBalancer
+  selector:
+    app: ismat-fatima-frontend
+  ports:
+    - port: 80
+      targetPort: 3000

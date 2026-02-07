@@ -1,109 +1,103 @@
 ﻿// frontend/lib/api.ts
-
 export type Task = {
   id: number;
-  user_id: string;
   title: string;
+  description?: string | null;
   completed: boolean;
+  due_date?: string | null;
 };
 
-function safeUserId(userId: string) {
-  return encodeURIComponent(userId);
+const API_BASE = ""; // we call Next route handlers: /api/...
+
+async function readTextSafe(res: Response) {
+  try {
+    return await res.text();
+  } catch {
+    return "";
+  }
 }
 
-/**
- * IMPORTANT:
- * - Browser se direct HuggingFace backend call NAHI hogi
- * - Sab calls same-origin Next.js API routes (/api/...) pe jayengi
- * - CORS / Mixed content ka masla khatam
- */
-export const api = {
-  async listTasks(userId: string): Promise<Task[]> {
-    const res = await fetch(`/api/${safeUserId(userId)}/tasks`, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      throw new Error(`Failed to list tasks (${res.status})`);
-    }
-
-    return res.json();
-  },
-
-  async addTask(userId: string, title: string): Promise<Task> {
-    const res = await fetch(`/api/${safeUserId(userId)}/tasks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Failed to add task (${res.status})`);
-    }
-
-    return res.json();
-  },
-
-  async toggleComplete(
-    userId: string,
-    taskId: number
-  ): Promise<Task> {
-    const res = await fetch(
-      `/api/${safeUserId(userId)}/tasks/${taskId}`,
-      {
-        method: "PATCH",
-      }
-    );
-
-    if (!res.ok) {
-      throw new Error(`Failed to toggle task (${res.status})`);
-    }
-
-    return res.json();
-  },
-
-  async deleteTask(
-    userId: string,
-    taskId: number
-  ): Promise<{ ok: boolean }> {
-    const res = await fetch(
-      `/api/${safeUserId(userId)}/tasks/${taskId}`,
-      {
-        method: "DELETE",
-      }
-    );
-
-    if (!res.ok) {
-      throw new Error(`Failed to delete task (${res.status})`);
-    }
-
-    return res.json();
-  },
-};
-
-/**
- * Dashboard compatibility wrappers
- * (dashboard 3 args pass karta hai – hum 3rd ignore kar dete hain)
- */
-
-export async function apiListTasks(userId: string) {
-  return api.listTasks(userId);
+function niceMessageFromText(text: string) {
+  const t = (text || "").trim();
+  if (!t) return "";
+  // try JSON {detail:"..."} or {message:"..."}
+  try {
+    const j = JSON.parse(t);
+    const msg =
+      j?.detail ||
+      j?.message ||
+      j?.error ||
+      (Array.isArray(j) ? j.join(", ") : "");
+    if (msg && typeof msg === "string") return msg;
+  } catch {
+    // ignore
+  }
+  return t;
 }
 
-export async function apiAddTask(userId: string, title: string) {
-  return api.addTask(userId, title);
+async function assertOk(res: Response) {
+  if (res.ok) return;
+
+  const text = await readTextSafe(res);
+  const msg = niceMessageFromText(text);
+
+  // IMPORTANT: always throw Error(string) so toast doesn't show [object Object]
+  throw new Error(msg || `HTTP ${res.status}`);
+}
+
+function apiTasksUrl(userId: string) {
+  return `${API_BASE}/api/${encodeURIComponent(userId)}/tasks`;
+}
+
+function apiTaskUrl(userId: string, taskId: number) {
+  return `${API_BASE}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(String(taskId))}`;
+}
+
+export async function apiListTasks(userId: string): Promise<Task[]> {
+  const res = await fetch(apiTasksUrl(userId), { method: "GET", cache: "no-store" });
+  await assertOk(res);
+  const data = (await res.json()) as Task[];
+  return Array.isArray(data) ? data : [];
+}
+
+export async function apiAddTask(args: {
+  userId: string;
+  title: string;
+  description?: string;
+  due_date?: string;
+}): Promise<Task> {
+  const res = await fetch(apiTasksUrl(args.userId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      title: args.title,
+      description: args.description ?? null,
+      due_date: args.due_date ?? null,
+    }),
+  });
+  await assertOk(res);
+  return (await res.json()) as Task;
+}
+
+export async function apiDeleteTask(userId: string, taskId: number): Promise<{ ok: true }> {
+  const res = await fetch(apiTaskUrl(userId, taskId), { method: "DELETE", cache: "no-store" });
+  await assertOk(res);
+  return { ok: true };
 }
 
 export async function apiToggleComplete(
   userId: string,
   taskId: number,
-  _nextCompleted?: boolean
-) {
-  // _nextCompleted dashboard se aata hai — backend ko zarurat nahi
-  return api.toggleComplete(userId, taskId);
-}
-
-export async function apiDeleteTask(userId: string, taskId: number) {
-  return api.deleteTask(userId, taskId);
+  completed: boolean
+): Promise<Task> {
+  // PATCH route handler
+  const res = await fetch(apiTaskUrl(userId, taskId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ completed }),
+  });
+  await assertOk(res);
+  return (await res.json()) as Task;
 }

@@ -1,0 +1,35 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: kafka-pubsub
+  namespace: todo
+spec:
+  type: pubsub.kafka
+  version: v1
+  metadata:
+    - name: brokers
+      value: "d6274ideni53p65n3mtg.any.us-east-1.mpx.prd.cloud.redpanda.com:9092"
+
+    - name: consumerGroup
+      value: "todo-backend-group"
+
+    - name: authType
+      value: "password"
+
+    - name: saslMechanism
+      value: "SCRAM-SHA-256"
+
+    - name: saslUsername
+      value: "todo-phase5-user"
+
+    - name: saslPassword
+      secretKeyRef:
+        name: kafka-secret
+        key: password
+
+    - name: securityProtocol
+      value: "SASL_SSL"
+
+    # ✅ Hackathon-safe fix for "invalid ca certificate"
+    - name: skipVerify
+      value: "true"

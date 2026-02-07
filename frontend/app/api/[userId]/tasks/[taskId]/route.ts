@@ -1,57 +1,93 @@
-﻿import { NextResponse } from "next/server";
+﻿// frontend/app/api/[userId]/tasks/[taskId]/route.ts
+import { NextResponse } from "next/server";
 
-const BACKEND =
-  process.env.HF_BACKEND_URL ||
-  process.env.BACKEND_URL ||
-  "https://ismat110-todo-backend-phase5.hf.space";
+function getBase() {
+  const raw =
+    process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.API_BASE ||
+    process.env.BACKEND_URL ||
+    "http://127.0.0.1:8000";
 
-function join(base: string, path: string) {
-  return base.replace(/\/+$/, "") + "/" + path.replace(/^\/+/, "");
+  return raw.replace(/\/+$/, "");
 }
 
-export async function PATCH(
+function apiUrl(path: string) {
+  const base = getBase();
+  if (base.endsWith("/api")) return `${base}${path}`;
+  return `${base}/api${path}`;
+}
+
+export async function DELETE(
   _req: Request,
-  context: { params: Promise<{ userId: string; taskId: string }> }
+  ctx: { params: Promise<{ userId: string; taskId: string }> }
 ) {
   try {
-    const { userId, taskId } = await context.params;
-    const safeUserId = encodeURIComponent(userId);
-    const safeTaskId = encodeURIComponent(taskId);
+    const { userId, taskId } = await ctx.params;
 
-    const url = join(BACKEND, `api/${safeUserId}/tasks/${safeTaskId}/complete`);
-    const r = await fetch(url, { method: "PATCH" });
+    if (!userId || !taskId) {
+      return NextResponse.json(
+        { error: "Missing userId or taskId" },
+        { status: 400 }
+      );
+    }
 
-    return new NextResponse(await r.text(), {
-      status: r.status,
-      headers: { "Content-Type": "application/json" },
+    const upstream = await fetch(
+      apiUrl(`/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`),
+      { method: "DELETE" }
+    );
+
+    const text = await upstream.text();
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") || "application/json",
+      },
     });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Server error" },
+      { error: e?.message || "Proxy DELETE failed" },
       { status: 500 }
     );
   }
 }
 
-export async function DELETE(
-  _req: Request,
-  context: { params: Promise<{ userId: string; taskId: string }> }
+export async function PATCH(
+  req: Request,
+  ctx: { params: Promise<{ userId: string; taskId: string }> }
 ) {
   try {
-    const { userId, taskId } = await context.params;
-    const safeUserId = encodeURIComponent(userId);
-    const safeTaskId = encodeURIComponent(taskId);
+    const { userId, taskId } = await ctx.params;
 
-    const url = join(BACKEND, `api/${safeUserId}/tasks/${safeTaskId}`);
-    const r = await fetch(url, { method: "DELETE" });
+    if (!userId || !taskId) {
+      return NextResponse.json(
+        { error: "Missing userId or taskId" },
+        { status: 400 }
+      );
+    }
 
-    return new NextResponse(await r.text(), {
-      status: r.status,
-      headers: { "Content-Type": "application/json" },
+    const body = await req.text();
+
+    const upstream = await fetch(
+      apiUrl(`/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`),
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": req.headers.get("content-type") || "application/json",
+        },
+        body,
+      }
+    );
+
+    const text = await upstream.text();
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") || "application/json",
+      },
     });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Server error" },
+      { error: e?.message || "Proxy PATCH failed" },
       { status: 500 }
     );
   }

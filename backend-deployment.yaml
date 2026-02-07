@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ismat-fatima-backend
+  namespace: todo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ismat-fatima-backend
+  template:
+    metadata:
+      labels:
+        app: ismat-fatima-backend
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "ismat-fatima-backend"
+        dapr.io/app-port: "7860"
+    spec:
+      containers:
+        - name: backend
+          image: ismatfatimaacr2026.azurecr.io/ismat-fatima-backend:0.2
+          ports:
+            - containerPort: 7860
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                secretKeyRef:
+                  name: redpanda-kafka-secret
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: redpanda-kafka-secret
+                  key: KAFKA_USERNAME
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redpanda-kafka-secret
+                  key: KAFKA_PASSWORD
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ismat-fatima-backend
+  namespace: todo
+spec:
+  selector:
+    app: ismat-fatima-backend
+  ports:
+    - port: 80
+      targetPort: 7860
+  type: ClusterIP
