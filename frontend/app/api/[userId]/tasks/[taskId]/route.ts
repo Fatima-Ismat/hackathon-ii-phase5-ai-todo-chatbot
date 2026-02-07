@@ -1,19 +1,15 @@
-﻿// frontend/app/api/[userId]/tasks/[taskId]/route.ts
-import { NextRequest, NextResponse } from "next/server";
-
-export const runtime = "nodejs";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 function getBase() {
   const raw =
-    process.env.BACKEND_INTERNAL_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.API_BASE ||
     process.env.BACKEND_URL ||
     process.env.BACKEND_API_URL ||
     "http://127.0.0.1:8000";
 
-  return String(raw).replace(/\/+$/, "");
+  return raw.replace(/\/+$/, "");
 }
 
 function apiUrl(path: string) {
@@ -24,10 +20,10 @@ function apiUrl(path: string) {
 
 export async function DELETE(
   _req: NextRequest,
-  ctx: { params: { userId: string; taskId: string } }
+  ctx: { params: Promise<{ userId: string; taskId: string }> }
 ) {
   try {
-    const { userId, taskId } = ctx.params;
+    const { userId, taskId } = await ctx.params;
 
     if (!userId || !taskId) {
       return NextResponse.json(
@@ -36,14 +32,12 @@ export async function DELETE(
       );
     }
 
-    const url = apiUrl(
-      `/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`
+    const upstream = await fetch(
+      apiUrl(
+        `/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`
+      ),
+      { method: "DELETE" }
     );
-
-    const upstream = await fetch(url, {
-      method: "DELETE",
-      headers: { Accept: "application/json" },
-    });
 
     const text = await upstream.text();
     return new NextResponse(text, {
@@ -55,22 +49,18 @@ export async function DELETE(
     });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        error: "Proxy DELETE failed",
-        detail: e?.message || String(e),
-        base: getBase(),
-      },
-      { status: 502 }
+      { error: e?.message || "Proxy DELETE failed" },
+      { status: 500 }
     );
   }
 }
 
 export async function PATCH(
   req: NextRequest,
-  ctx: { params: { userId: string; taskId: string } }
+  ctx: { params: Promise<{ userId: string; taskId: string }> }
 ) {
   try {
-    const { userId, taskId } = ctx.params;
+    const { userId, taskId } = await ctx.params;
 
     if (!userId || !taskId) {
       return NextResponse.json(
@@ -79,20 +69,21 @@ export async function PATCH(
       );
     }
 
-    const url = apiUrl(
-      `/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`
-    );
-
     const body = await req.text();
 
-    const upstream = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": req.headers.get("content-type") || "application/json",
-        Accept: "application/json",
-      },
-      body,
-    });
+    const upstream = await fetch(
+      apiUrl(
+        `/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(taskId)}`
+      ),
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type":
+            req.headers.get("content-type") || "application/json",
+        },
+        body,
+      }
+    );
 
     const text = await upstream.text();
     return new NextResponse(text, {
@@ -104,12 +95,8 @@ export async function PATCH(
     });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        error: "Proxy PATCH failed",
-        detail: e?.message || String(e),
-        base: getBase(),
-      },
-      { status: 502 }
+      { error: e?.message || "Proxy PATCH failed" },
+      { status: 500 }
     );
   }
 }

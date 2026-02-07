@@ -1,12 +1,9 @@
-﻿// frontend/app/api/[userId]/tasks/route.ts
-import { NextRequest, NextResponse } from "next/server";
-
-export const runtime = "nodejs"; // ✅ force Node runtime
+﻿import { NextRequest, NextResponse } from "next/server";
 
 function getBase() {
   const raw =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.API_BASE ||
     process.env.BACKEND_URL ||
     process.env.BACKEND_API_URL ||
@@ -21,39 +18,32 @@ function apiUrl(path: string) {
   return `${base}/api${path}`;
 }
 
-function passThrough(upstream: Response, text: string) {
-  return new NextResponse(text, {
-    status: upstream.status,
-    headers: {
-      "content-type": upstream.headers.get("content-type") || "application/json",
-      "cache-control": "no-store",
-    },
-  });
-}
-
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ userId: string }> }
 ) {
-  const { userId } = await ctx.params;
-  const url = apiUrl(`/${encodeURIComponent(userId)}/tasks`);
-
   try {
+    const { userId } = await ctx.params;
+
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
 
-    const upstream = await fetch(url, { cache: "no-store" });
+    const upstream = await fetch(apiUrl(`/${encodeURIComponent(userId)}/tasks`), {
+      cache: "no-store",
+    });
+
     const text = await upstream.text();
-    return passThrough(upstream, text);
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("content-type") || "application/json",
+      },
+    });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        error: "Upstream fetch failed",
-        message: e?.message || String(e),
-        base: getBase(),
-        url,
-      },
+      { error: e?.message || "Proxy GET failed" },
       { status: 500 }
     );
   }
@@ -63,33 +53,35 @@ export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ userId: string }> }
 ) {
-  const { userId } = await ctx.params;
-  const url = apiUrl(`/${encodeURIComponent(userId)}/tasks`);
-
   try {
+    const { userId } = await ctx.params;
+
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
 
-    const contentType = req.headers.get("content-type") || "application/json";
     const body = await req.text();
 
-    const upstream = await fetch(url, {
+    const upstream = await fetch(apiUrl(`/${encodeURIComponent(userId)}/tasks`), {
       method: "POST",
-      headers: { "content-type": contentType },
+      headers: {
+        "Content-Type":
+          req.headers.get("content-type") || "application/json",
+      },
       body,
     });
 
     const text = await upstream.text();
-    return passThrough(upstream, text);
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("content-type") || "application/json",
+      },
+    });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        error: "Upstream fetch failed",
-        message: e?.message || String(e),
-        base: getBase(),
-        url,
-      },
+      { error: e?.message || "Proxy POST failed" },
       { status: 500 }
     );
   }
