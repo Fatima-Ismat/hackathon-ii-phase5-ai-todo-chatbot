@@ -1,24 +1,36 @@
 # ---------- deps ----------
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
+
+# copy package.json
+COPY package.json ./
+
+# copy lockfile if present (wildcard => no error if missing)
+COPY package-lock.json* ./
+
+# install deps
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
 
 # ---------- builder ----------
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# ✅ build-time public env (Next.js client bundle will bake this)
+# bake public envs (Next.js build-time)
 ARG NEXT_PUBLIC_API_BASE
+ARG NEXT_PUBLIC_BACKEND_BASE_URL
+
 ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+ENV NEXT_PUBLIC_BACKEND_BASE_URL=${NEXT_PUBLIC_BACKEND_BASE_URL}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# optional: show during build (debug)
 RUN echo "NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}"
+RUN echo "NEXT_PUBLIC_BACKEND_BASE_URL=${NEXT_PUBLIC_BACKEND_BASE_URL}"
 
 RUN npm run build
+
 
 # ---------- runner ----------
 FROM node:20-alpine AS runner

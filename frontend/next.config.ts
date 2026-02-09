@@ -1,10 +1,13 @@
-﻿import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  // Vercel + local both OK. (If you use `output: "standalone"`, start with: node .next/standalone/server.js)
-  // output: "standalone",
-
-  // Keep it simple: NO rewrites/proxy here, warna "todo-backend" wali ENOTFOUND aati hai.
+﻿/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://20.203.113.87/api/:path*",
+      },
+    ];
+  },
 };
 
-export default nextConfig;
+module.exports = nextConfig;

@@ -1,4 +1,5 @@
 ﻿// frontend/lib/api.ts
+
 export type Task = {
   id: number;
   title: string;
@@ -7,7 +8,22 @@ export type Task = {
   due_date?: string | null;
 };
 
-const API_BASE = ""; // we call Next route handlers: /api/...
+// ✅ Direct backend base (AKS) — not Next /api route handlers
+const RAW_BASE =
+  process.env.NEXT_PUBLIC_BACKEND_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "";
+
+// remove trailing slash
+const API_BASE = RAW_BASE.replace(/\/+$/, "");
+
+function requireBase() {
+  if (!API_BASE) {
+    throw new Error(
+      "API base URL is empty. Set NEXT_PUBLIC_BACKEND_BASE_URL (or NEXT_PUBLIC_API_BASE) at build time."
+    );
+  }
+}
 
 async function readTextSafe(res: Response) {
   try {
@@ -20,7 +36,6 @@ async function readTextSafe(res: Response) {
 function niceMessageFromText(text: string) {
   const t = (text || "").trim();
   if (!t) return "";
-  // try JSON {detail:"..."} or {message:"..."}
   try {
     const j = JSON.parse(t);
     const msg =
@@ -41,16 +56,19 @@ async function assertOk(res: Response) {
   const text = await readTextSafe(res);
   const msg = niceMessageFromText(text);
 
-  // IMPORTANT: always throw Error(string) so toast doesn't show [object Object]
   throw new Error(msg || `HTTP ${res.status}`);
 }
 
 function apiTasksUrl(userId: string) {
+  requireBase();
   return `${API_BASE}/api/${encodeURIComponent(userId)}/tasks`;
 }
 
 function apiTaskUrl(userId: string, taskId: number) {
-  return `${API_BASE}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(String(taskId))}`;
+  requireBase();
+  return `${API_BASE}/api/${encodeURIComponent(userId)}/tasks/${encodeURIComponent(
+    String(taskId)
+  )}`;
 }
 
 export async function apiListTasks(userId: string): Promise<Task[]> {
@@ -91,7 +109,7 @@ export async function apiToggleComplete(
   taskId: number,
   completed: boolean
 ): Promise<Task> {
-  // PATCH route handler
+  // ✅ Backend me PATCH support ho to PATCH, warna PUT use karna padega.
   const res = await fetch(apiTaskUrl(userId, taskId), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

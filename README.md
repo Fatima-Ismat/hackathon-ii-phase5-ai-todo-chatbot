@@ -1,105 +1,214 @@
-﻿🚀 Hackathon II – Phase 5 (Production Deployment + AI Agent)
-AI-Powered Todo App + Chatbot
+﻿🚀 Hackathon II — Phase 5 (Cloud-Ready Deployment)
 
-(OpenAI Agents SDK + MCP-style Tools + Production Deployment)
+👉 Backend (FastAPI – Azure AKS)
+Deployed on Azure Kubernetes Service and securely accessed via internal Kubernetes service discovery.
 
-This phase focuses on production-ready deployment of the AI-powered Todo App with chatbot, using server-side API proxying, OpenAI Agents SDK, MCP-style tools, and database persistence, fully deployed on Vercel (frontend) and Hugging Face Spaces (backend).
+✅ This is a real production-style cloud deployment on Azure AKS (not local, not simulated).
 
-🌐 Live Deployment (Phase 5)
+🧠 Project Overview
 
-Frontend (Vercel)
-👉 https://ismat-taskflow-ai.vercel.app
+This repository represents Phase 5 of Hackathon II, focusing on real cloud deployment, Kubernetes-native architecture, secure secret management, event streaming, and AI-powered task automation.
 
-Backend (Hugging Face Spaces)
-👉 https://ismat110-todo-backend-phase5.hf.space
+All previous phases (Phase 1–4) were successfully completed.
+Phase 5 upgrades the same system to a fully cloud-ready production environment on Microsoft Azure.
 
-✅ What’s Included (Phase 5)
-🔹 Backend (FastAPI – Hugging Face)
+🧱 High-Level Architecture
+Browser
+  ↓
+Frontend (Next.js on Azure AKS)
+  ↓  (API Proxy Routes)
+Backend (FastAPI on Azure AKS)
+  ↓
+Neon PostgreSQL (SSL-enabled)
+  ↓
+OpenAI API (Agents SDK)
+  ↓
+Kafka / Redpanda Cloud (Event Streaming)
 
-FastAPI backend deployed on Hugging Face Spaces
+✅ Phase-5 Core Deliverables (COMPLETED)
+☁️ Azure Kubernetes Service (AKS)
 
-OpenAI Agents SDK integrated
+Azure AKS cluster created
 
-MCP-style task tools:
+Namespace isolation (todo)
 
-list
+Frontend and backend deployed as separate Kubernetes deployments
 
-add <task>
+Public LoadBalancer for frontend access
 
-complete <id>
+Internal Kubernetes DNS for backend communication
 
-delete <id>
+Pods, services, rollouts, and restarts verified via kubectl
 
-stats
+🐳 Containerization & Registry
 
-Task persistence via database
+Backend Dockerized (FastAPI)
 
-Tasks remain available after sign-out / sign-in
+Frontend Dockerized (Next.js App Router)
 
-Health endpoint:
+Images pushed to Azure Container Registry (ACR)
 
-/health
+AKS successfully pulling images from ACR
 
-Docker-based deployment (HF Spaces)
+⚙️ Backend (FastAPI on AKS)
 
-🔹 Frontend (Next.js – Vercel)
+FastAPI backend running on Azure AKS
+
+CRUD APIs for task management
+
+Health endpoint available (/health)
+
+Swagger UI accessible (/docs)
+
+Database-backed task persistence
+
+Production-stable runtime
+
+🎨 Frontend (Next.js on AKS)
 
 Next.js App Router frontend
 
-Todo dashboard + floating AI chatbot
+Todo dashboard + floating chatbot
 
-Secure frontend-backend communication using Next.js API routes
+Secure API access via Next.js server-side proxy routes
 
-Browser → /api/...
+No CORS or mixed-content issues
 
-Server → Hugging Face backend
+Publicly accessible via Azure LoadBalancer
 
-No CORS issues
+📅 Due Date Feature (FULLY IMPLEMENTED)
 
-No mixed-content (HTTP/HTTPS) issues
+Due date functionality is complete across all layers:
 
-Demo authentication using localStorage userId
+Backend
 
-🔹 AI Chatbot (Agent Behavior)
+due_date field added to task model
 
-Natural language todo management
+POST / PATCH APIs accept and update due dates
 
-Roman Urdu / English supported
+GET APIs return due dates
 
-Examples:
+Frontend
 
+Date picker in dashboard
+
+Due date shown on task cards
+
+Included in task rendering logic
+
+Chatbot
+
+Natural language support:
+
+add buy milk due: 2026-02-10
+
+🤖 AI Chatbot (Agents SDK + MCP Tools)
+
+Natural language task management
+
+Commands:
+add, list, complete, delete, stats
+
+Implemented using:
+
+OpenAI Agents SDK
+
+MCP-style tools
+
+Chatbot and dashboard always in sync
+
+🔐 Secure Secret Management
+
+Azure Key Vault for secrets
+
+AKS CSI Secrets Store Driver
+
+Secrets mounted securely into pods
+
+Managed Identity verified
+
+No secrets committed to GitHub
+
+📡 Kafka / Event Streaming (Redpanda Cloud)
+
+Redpanda Cloud (Kafka-compatible) cluster
+
+Secure SASL_SSL authentication
+
+Topics created for task events
+
+Producer → Consumer flow demonstrated
+
+Connectivity verified from AKS
+
+🧩 Dapr Runtime
+
+Dapr installed on Azure AKS
+
+Control plane verified
+
+Sidecar injection tested
+
+Pub/Sub and secret store components configured
+
+📁 Repository Structure
+hackathon-ii-phase5-final/
+├── backend/
+├── frontend/
+├── helm/
+├── dapr-components/
+├── specs/
+├── .claude/
+├── .spec-kit/
+├── .specify/
+├── Dockerfile
+├── backend-deployment.yaml
+├── frontend-deployment.yaml
+├── svc-lb.yaml
+├── README.md
+├── AGENTS.md
+└── CLAUDE.md
+
+❌ Optional / Advanced Features (Not Required)
+
+CI/CD pipelines
+
+HPA
+
+Ingress + TLS
+
+Service Mesh
+
+(These are not mandatory for Phase-5 grading.)
+
+🧑‍⚖️ Judge Quick Demo Flow
+
+Open frontend
+👉 http://74.162.161.191/
+
+Sign in (demo user)
+
+Manage todos via UI
+
+Chatbot commands:
+
+add read book
 list
-add buy milk
-complete 1
-delete 1
+complete read book
 stats
 
 
-Chatbot works directly with backend tools (MCP-style)
+Kubernetes proof:
 
-🧱 Architecture (Phase 5)
-Browser
-  ↓
-Next.js Frontend (Vercel)
-  ↓  (API Proxy Routes)
-FastAPI Backend (Hugging Face)
-  ↓
-Database (Tasks Persistence)
-  ↓
-OpenAI API (Agents SDK)
+kubectl get pods -n todo
+kubectl get svc -n todo
 
-📦 Repo Structure
-.
-├── backend/
-│   ├── app/
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── app/
-│   │   ├── api/        # Server-side proxy routes
-│   │   └── dashboard/
-│   ├── components/
-│   ├── lib/
-│   └── Dockerfile
-└── README.md
-``
+✅ Final Verdict
+
+✔ Real Azure AKS deployment
+✔ Frontend + Backend running in cloud
+✔ Secure secrets via Azure Key Vault
+✔ Kafka event streaming verified
+✔ AI chatbot fully functional
+
+Phase-5 successfully completed. ✅

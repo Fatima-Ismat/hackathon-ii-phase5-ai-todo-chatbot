@@ -8,17 +8,19 @@ from app.routers.chat import router as chat_router
 
 app = FastAPI(title="Todo Backend", version="0.1.0")
 
+# ✅ Browser CORS fix:
+# "*" origins ke sath allow_credentials=True invalid hota hai.
+# Hum cookies/session use nahi kar rahe, so credentials OFF rakho.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(tasks_router)
 app.include_router(chat_router)
-
 
 @app.get("/health")
 def health():
