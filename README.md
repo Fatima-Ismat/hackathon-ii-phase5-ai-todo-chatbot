@@ -1,5 +1,13 @@
 ﻿🚀 Hackathon II — Phase 5 (Cloud-Ready Deployment)
 
+AI-Powered Todo App + Chatbot
+Author: Ismat Fatima
+
+🌐 LIVE CLOUD DEPLOYMENT (Azure AKS) — Judge Quick Access
+
+👉 Frontend (Azure AKS – Public LoadBalancer)
+http://74.162.161.191/
+
 👉 Backend (FastAPI – Azure AKS)
 Deployed on Azure Kubernetes Service and securely accessed via internal Kubernetes service discovery.
 
